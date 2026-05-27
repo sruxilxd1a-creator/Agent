@@ -626,6 +626,7 @@ var S = {
   armed:false,          // 듣기 활성(트리거 ON) 상태
   listening:false,      // 음성인식 진행 중
   thinking:false,       // Gemini 호출 중
+  speaking:false,       // TTS 응답 재생 중 — 이 동안 트리거 무시
   camOn:false,
   tts:true,
   autoCam:false,
@@ -649,9 +650,11 @@ function logLine(box, msg, cls){
                  + '<br>' + el.innerHTML;
 }
 function setOrb(state){
-  // state: idle | armed | listening | thinking
+  // state: idle | armed | listening | thinking | speaking
   var orb=$('orb'), icon=$('orbIcon'), label=$('orbLabel'), sub=$('orbSub');
-  orb.className = 'orb' + (state==='idle'?'':' '+state);
+  // speaking 은 thinking 과 같은 애니메이션(파란 링) 재사용
+  var cls = (state==='speaking') ? 'thinking' : state;
+  orb.className = 'orb' + (cls==='idle'?'':' '+cls);
   if(state==='idle'){
     icon.textContent='🧠'; label.textContent='대기 중';
     sub.textContent='고개를 왼쪽 아래로 꺾고 그 자세로 말하세요';
@@ -664,11 +667,14 @@ function setOrb(state){
   } else if(state==='thinking'){
     icon.textContent='✨'; label.textContent='Gemini 가 생각 중…';
     sub.textContent=S.camOn?'카메라 화면과 함께 분석 중':'답을 만들고 있어요';
+  } else if(state==='speaking'){
+    icon.textContent='🔊'; label.textContent='Gemini 가 답하는 중…';
+    sub.textContent='끝까지 들으세요 — 지금 고개를 움직여도 멈추지 않아요';
   }
   // 전체화면 카메라 오버레이 상태 미러
   if(S.camOn && typeof setCamState==='function'){
-    setCamState({idle:'대기',armed:'듣는 중',
-                 listening:'인식 중',thinking:'분석 중…'}[state]||'대기');
+    setCamState({idle:'대기',armed:'듣는 중',listening:'인식 중',
+                 thinking:'분석 중…',speaking:'답하는 중'}[state]||'대기');
   }
 }
 function refreshPills(){
@@ -707,16 +713,30 @@ function clearLive(){
 
 /* ---------------------------------------------------------------------------
  * 3. 음성 출력 (TTS)
+ *   S.speaking 을 utterance 이벤트로 정확히 추적한다.
+ *   재생 중에는 트리거가 무시되므로(아래 onGyroMotion 참고) 고개를 꺾어도
+ *   발화가 중간에 끊기지 않는다.
  * -------------------------------------------------------------------------*/
 function speak(text){
   if(!S.tts || !('speechSynthesis' in window)) return;
   try{
-    window.speechSynthesis.cancel();
+    window.speechSynthesis.cancel();   // 이전 발화 정리(있다면)
     var u=new SpeechSynthesisUtterance(text);
     u.lang=$('lang').value;
     u.rate=1.04; u.pitch=1.0;
+    u.onstart=function(){ S.speaking=true;  refreshPills();
+                          setOrb('speaking'); };
+    u.onend  =function(){ S.speaking=false; refreshPills();
+                          if(!S.thinking && !S.listening) setOrb('idle'); };
+    u.onerror=function(){ S.speaking=false; refreshPills();
+                          if(!S.thinking && !S.listening) setOrb('idle'); };
     window.speechSynthesis.speak(u);
-  }catch(e){}
+  }catch(e){ S.speaking=false; }
+}
+/* 진행 중인 발화를 즉시 멈춤 (카메라 종료/정지 등 명시적 상황에서만 사용) */
+function stopSpeaking(){
+  try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(e){}
+  S.speaking=false;
 }
 
 /* ---------------------------------------------------------------------------
@@ -932,9 +952,11 @@ function handleUtterance(text){
       S.history.push({role:'model',text:answer});
       if(S.history.length>12) S.history=S.history.slice(-12);
       S.thinking=false; refreshPills();
-      setOrb('idle');
       addBubble('ai',answer,false);
+      // orb 는 idle 로 두지 않고 speak() 의 onstart 가 'speaking' 으로 전환.
+      // TTS 가 꺼져 있거나 미지원이면 곧장 idle.
       speak(answer);
+      if(!S.tts || !('speechSynthesis' in window)) setOrb('idle');
       logLine('setupLog','응답 완료'+(img?' (카메라 첨부)':''),'t');
     }).catch(function(err){
       S.thinking=false; refreshPills();
@@ -1125,6 +1147,16 @@ function onGravity(e){
 function evalStateMachine(){
   var now=Date.now();
 
+  // Gemini 응답 재생/생성 중에는 상태머신을 진행시키지 않는다.
+  //  → arming→armed 전이(=startListening, 내부에서 TTS cancel)가 막혀
+  //    재생 중 고개를 꺾어도 발화가 끊기지 않는다.
+  //  진입(idle→arming)도 onGyroMotion 에서 이미 막혀 있으므로 안전.
+  if(S.speaking || S.thinking){
+    // 단, arming 상태로 들어와 있었다면 깔끔히 취소(재생 끝난 뒤 새로 시작)
+    if(TRIG.phase==='arming') TRIG.phase='idle';
+    return;
+  }
+
   if(TRIG.phase==='idle'){
     // 진입은 자이로(아래 onGyroMotion)에서 arming 으로 전환됨. 여기선 대기.
     return;
@@ -1163,9 +1195,11 @@ function evalStateMachine(){
 }
 
 /* 자이로 동작 감지 — 진입 트리거 전용.
- *  HeadMotion 모듈이 onTilt 로 주는 회전속도(tiltRate/spinRate)를 활용. */
+ *  HeadMotion 모듈이 onTilt 로 주는 회전속도(tiltRate/spinRate)를 활용.
+ *  ※ Gemini 응답을 말하는 중(S.speaking)이거나 호출 중(S.thinking)에는
+ *    트리거를 받지 않는다 → 재생 중 고개를 꺾어도 발화가 끊기지 않는다. */
 function onGyroMotion(tiltRate, spinRate){
-  if(TRIG.phase!=='idle' || S.thinking) return;
+  if(TRIG.phase!=='idle' || S.thinking || S.speaking) return;
   // 숙임 또는 좌우, 둘 중 하나라도 충분히 빠른 '꺾는 동작'이면 ARMING 진입
   var moved = (Math.abs(tiltRate)>TRIG.gyroOn) ||
               (Math.abs(spinRate)>TRIG.gyroOn);
@@ -1284,6 +1318,7 @@ $('startBtn').addEventListener('click',function(){
   } else {
     if(hm) hm.stop();
     if(S.listening) stopListening();
+    stopSpeaking();
     stopCamera();
     sensorStarted=false; S.sensorOn=false;
     $('startBtn').textContent='▶ 센서 시작 — 권한 허용';
