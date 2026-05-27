@@ -63,6 +63,21 @@
     border-radius:9px;padding:9px 10px;color:var(--ink);font-size:12px;
     font-family:inherit;outline:none;}
 
+  input[type=range]{
+    -webkit-appearance:none;appearance:none;width:100%;height:26px;
+    background:transparent;cursor:pointer;margin-top:2px;}
+  input[type=range]::-webkit-slider-runnable-track{
+    height:6px;border-radius:4px;background:#0a0d18;border:1px solid var(--line);}
+  input[type=range]::-moz-range-track{
+    height:6px;border-radius:4px;background:#0a0d18;border:1px solid var(--line);}
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;appearance:none;width:20px;height:20px;
+    border-radius:50%;background:var(--accent);margin-top:-8px;
+    box-shadow:0 2px 8px -1px rgba(92,225,184,.6);}
+  input[type=range]::-moz-range-thumb{
+    width:20px;height:20px;border:none;border-radius:50%;
+    background:var(--accent);box-shadow:0 2px 8px -1px rgba(92,225,184,.6);}
+
   .btn{width:100%;border:none;border-radius:12px;padding:14px;
        font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;
        transition:transform .08s,opacity .15s;letter-spacing:-.2px;}
@@ -312,20 +327,25 @@
     </div>
   </div>
 
-  <!-- ============ AXIS CALIBRATION ============ -->
+  <!-- ============ TRIGGER TUNING / CALIBRATION ============ -->
   <div class="sec">
-    <div class="sec-t">축 보정 — 동작이 이상하면</div>
+    <div class="sec-t">트리거 동작 — 진단 & 보정</div>
     <div class="card">
       <div class="hint" style="margin-bottom:10px;">
-        휴대폰이 가로라 기기마다 축이 다릅니다. 아래 <b>α/β/γ</b> 값을 보며:
-        <ol>
-          <li>고개를 <b>위아래로</b> 숙였다 들기 → 제일 크게 변하는 게 <code>tiltAxis</code></li>
-          <li>고개를 <b>좌우로</b> 기울이기 → 제일 크게 변하는 게 <code>swipeAxis</code></li>
-          <li>상단 게이지 <b>숙임</b>/<b>좌우</b> 막대가 의도와 반대로 차면
-              해당 방향 스위치를 뒤집으세요</li>
-        </ol>
-        트리거는 <b>숙임</b> 또는 <b>좌우(왼쪽)</b> 둘 중 하나만 충분히 움직여도
-        발동하므로, "왼쪽 아래" 동작이 한쪽으로 치우쳐도 잘 잡힙니다.
+        <b>진입</b>은 자이로(꺾는 동작)로, <b>유지</b>는 가속도(절대 자세)로
+        판단합니다. 그래서 꺾은 채 가만히 있어도 풀리지 않고, 책상에 비스듬히
+        둬도 켜지지 않습니다. 종료는 <b>고개를 정면으로 되돌릴 때</b> 또는
+        말이 일정 시간 없을 때입니다.
+      </div>
+      <!-- 실시간 상태 -->
+      <div class="diag">
+        <div class="cell"><div class="k">상태(phase)</div><div class="v" id="dPhase">idle</div></div>
+        <div class="cell"><div class="k">자세 이탈각</div><div class="v" id="dPosture">0°</div></div>
+        <div class="cell"><div class="k">회전속도 max</div><div class="v" id="dGyro">0</div></div>
+      </div>
+      <div class="hint" style="margin:8px 0 2px;">
+        ↓ 자이로 축은 <b>진입(꺾는 동작) 감지</b>에만 쓰입니다. 동작을 해도
+        진입이 안 되면 아래 α/β/γ 를 보고 축을 맞추세요.
       </div>
       <div class="diag">
         <div class="cell"><div class="k">rotationRate α</div><div class="v" id="dA">0</div></div>
@@ -334,7 +354,7 @@
       </div>
       <div class="row" style="margin-top:10px;">
         <div class="field">
-          <label>tiltAxis (상하 숙임)</label>
+          <label>tiltAxis (상하 동작 감지)</label>
           <select id="tiltAxis">
             <option value="beta">beta</option>
             <option value="alpha">alpha</option>
@@ -342,7 +362,7 @@
           </select>
         </div>
         <div class="field">
-          <label>swipeAxis (좌우 기울임)</label>
+          <label>swipeAxis (좌우 동작 감지)</label>
           <select id="swipeAxis">
             <option value="alpha">alpha</option>
             <option value="beta">beta</option>
@@ -350,27 +370,51 @@
           </select>
         </div>
       </div>
-      <div style="margin-top:10px;">
+
+      <!-- 임계값 슬라이더 -->
+      <div class="field" style="margin-top:14px;">
+        <label>진입 민감도 — 자이로 동작 임계
+          <b id="lblGyro">55</b> °/s
+          <span style="color:var(--faint);">(낮을수록 약한 동작에도 진입)</span>
+        </label>
+        <input type="range" id="rngGyro" min="25" max="120" step="5" value="55">
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label>유지 자세각 — 이 각도 이상 꺾여야 듣기 유지
+          <b id="lblPostureOn">16</b> °
+        </label>
+        <input type="range" id="rngPostureOn" min="8" max="35" step="1" value="16">
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label>복귀 자세각 — 이 각도 아래로 펴면 종료·전송
+          <b id="lblPostureOff">9</b> °
+        </label>
+        <input type="range" id="rngPostureOff" min="3" max="25" step="1" value="9">
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label>침묵 자동종료 — 말 없는 시간
+          <b id="lblSilence">6</b> 초 <span style="color:var(--faint);">(0=끔)</span>
+        </label>
+        <input type="range" id="rngSilence" min="0" max="15" step="1" value="6">
+      </div>
+
+      <div style="margin-top:12px;">
         <div class="toggle-row">
-          <span>숙임 방향 뒤집기 <code>tiltDir</code></span>
+          <span>숙임 게이지 방향 뒤집기</span>
           <div class="sw" id="swTiltDir"></div>
         </div>
         <div class="toggle-row">
-          <span>좌우 방향 뒤집기 <code>swipeDir</code></span>
-          <div class="sw" id="swSwipeDir"></div>
-        </div>
-        <div class="toggle-row">
-          <span>왼쪽 기울임 트리거 방향 뒤집기</span>
+          <span>좌우 게이지 방향 뒤집기</span>
           <div class="sw" id="swRollDir"></div>
         </div>
       </div>
-      <div class="field" style="margin-top:10px;">
-        <label>숙임 트리거 방향 — 위/아래 중 어느 쪽으로 숙일 때?</label>
-        <select id="trigDir">
-          <option value="down">아래로 숙일 때 (기본)</option>
-          <option value="up">위로 들 때</option>
-        </select>
+      <div class="hint" style="margin-top:8px;">
+        게이지는 동작 확인용 시각화입니다. 막대가 의도와 반대로 차면 위
+        스위치로 뒤집으세요. 트리거 자체는 게이지 방향과 무관하게 동작합니다.
       </div>
+      <button class="btn btn-ghost" id="recenterBtn2" style="margin-top:12px;">
+        지금 자세를 "정면 기준"으로 잡기
+      </button>
     </div>
   </div>
 
@@ -564,9 +608,11 @@ function saveStore(){
       tiltAxis:$('tiltAxis').value,
       swipeAxis:$('swipeAxis').value,
       tiltDirNeg:S.tiltDirNeg,
-      swipeDirNeg:S.swipeDirNeg,
       rollDirNeg:S.rollDirNeg,
-      trigDir:$('trigDir').value,
+      gyroOn:TRIG.gyroOn,
+      postureOn:TRIG.postureOn,
+      postureOff:TRIG.postureOff,
+      silenceMs:TRIG.silenceMs,
       tts:S.tts, autoCam:S.autoCam
     }));
   } catch(e){}
@@ -577,17 +623,15 @@ function saveStore(){
  * -------------------------------------------------------------------------*/
 var S = {
   sensorOn:false,
-  armed:false,          // 트리거 방향으로 고개를 꺾은 상태인가
+  armed:false,          // 듣기 활성(트리거 ON) 상태
   listening:false,      // 음성인식 진행 중
   thinking:false,       // Gemini 호출 중
   camOn:false,
   tts:true,
   autoCam:false,
-  tiltDirNeg:false,
-  swipeDirNeg:false,
-  rollDirNeg:false,     // 왼쪽 기울임 방향이 반대로 잡힐 때 뒤집기
-  trigDir:'down',
-  lastTiltDir:'center',
+  tiltDirNeg:false,     // 숙임 게이지 시각화 방향
+  rollDirNeg:false,     // 좌우 게이지 시각화 방향
+  swipeDirNeg:false,    // 모듈 swipeDir 설정용(자이로 부호)
   history:[]            // [{role:'user'|'model', text}]
 };
 
@@ -610,7 +654,7 @@ function setOrb(state){
   orb.className = 'orb' + (state==='idle'?'':' '+state);
   if(state==='idle'){
     icon.textContent='🧠'; label.textContent='대기 중';
-    sub.textContent='고개를 '+(S.trigDir==='down'?'아래로 숙이고':'위로 들고')+' 말하면 듣기 시작';
+    sub.textContent='고개를 왼쪽 아래로 꺾고 그 자세로 말하세요';
   } else if(state==='armed'){
     icon.textContent='👂'; label.textContent='듣고 있어요 — 말하세요';
     sub.textContent='말이 끝나면 고개를 다시 정면으로 — 자동 전송';
@@ -934,7 +978,10 @@ function buildRecognizer(){
       else interim+=res[0].transcript;
     }
     var show=(finalText+' '+interim).trim();
-    if(show) addBubble('you',show,true);
+    if(show){
+      addBubble('you',show,true);
+      TRIG.lastSpeechT=Date.now();   // 발화 감지 — 침묵 타이머 리셋
+    }
   };
   r.onerror=function(ev){
     logLine('setupLog','음성인식 오류: '+ev.error,'e');
@@ -969,6 +1016,7 @@ function startListening(){
   try{
     recog.start();
     S.listening=true;
+    TRIG.lastSpeechT=Date.now();   // 침묵 타이머 기준점
     refreshPills();
     setOrb('armed');
     if(window.speechSynthesis) window.speechSynthesis.cancel();
@@ -983,56 +1031,151 @@ function stopListening(){
 }
 
 /* ---------------------------------------------------------------------------
- * 9. HeadMotion 콜백 + 트리거 로직
+ * 9. HeadMotion 콜백 + 트리거 로직  (센서 융합 상태머신)
  *
- *  "고개를 왼쪽 아래로 숙인다" 는  ① 아래로 숙임(pitch)  ② 왼쪽으로 기울임(roll)
- *  두 회전이 섞인 동작이다. tilt 한 축만 보면 둔하므로 —
- *    · pitch 각도는 HeadMotion 모듈의 onTilt 에서 받고,
- *    · roll  각도는 swipeAxis 의 회전속도를 직접 적분해서 추정한다.
- *  둘 중 하나라도 임계를 넘으면 트리거 → 자연스러운 "왼쪽 아래" 동작이 잘 잡힌다.
+ *  [문제]  자이로(rotationRate)는 회전 '속도'만 준다. 고개를 꺾고 가만히
+ *          있으면 속도가 0 → 적분각이 중심복귀로 풀려 트리거가 해제된다.
+ *  [해결]  두 센서를 역할 분담한다.
+ *    · 자이로 rotationRate        → "꺾는 동작" 감지 = 진입 트리거
+ *    · 가속도 accelerationIncludingGravity(중력 벡터) → "꺾인 자세" 측정
+ *                                  = 유지/복귀 판정 (가만히 있어도 안 풀림)
+ *
+ *  [상태머신]
+ *    IDLE ──자이로 동작 감지──▶ ARMING ──0.4s 내 가속도가 '꺾인 자세'
+ *      도달 확인──▶ ARMED(듣기) ──가속도 정면복귀 OR 침묵──▶ IDLE(전송)
+ *
+ *  진입에 절대각만 쓰지 않는 이유: 책상에 비스듬히 둬도 켜진다.
+ *  → 반드시 "자이로 동작"이 먼저 와야 ARMING 으로 들어간다.
+ *  유지에 자이로를 안 쓰는 이유: 위의 풀림 문제. 가속도 절대 자세만 본다.
  * -------------------------------------------------------------------------*/
 var TRIG = {
-  pitchOn:8,    // 숙임 트리거 각(°)
-  rollOn:9,     // 좌측 기울임 트리거 각(°)
-  offFactor:0.55, // 해제는 더 낮은 각에서 (히스테리시스 — 떨림 방지)
-  rollAngle:0,  // 자체 적분한 roll 각
-  lastT:0
+  /* ── 진입: 자이로 동작 임계 ── */
+  gyroOn:      55,    // 트리거로 인정할 회전속도(deg/s) — 의도적 꺾임
+  armWindow:   600,   // 자이로 동작 후 이 시간(ms) 안에 자세가 잡혀야 ARMED
+
+  /* ── 유지/복귀: 가속도 절대 자세 임계 ── */
+  postureOn:   16,    // 기준자세 대비 이 각(°) 이상 벗어나면 '꺾인 자세'로 인정
+  postureOff:  9,     // 이 각(°) 아래로 돌아오면 '정면 복귀'로 판정 (히스테리시스)
+
+  /* ── 보조 종료: 침묵 ── */
+  silenceMs:   6000,  // 말이 이 시간(ms) 동안 없으면 자동 종료 (0이면 비활성)
+
+  /* ── 내부 상태 ── */
+  phase:'idle',       // 'idle' | 'arming' | 'armed'
+  armingSince:0,      // ARMING 진입 시각
+  refGravity:null,    // 정면 기준 중력 벡터 {x,y,z}
+  curGravity:{x:0,y:0,z:0},
+  postureAngle:0,     // 기준 대비 현재 자세 이탈각(°)
+  pitchComp:0, rollComp:0,  // 게이지용 분해 성분
+  lastSpeechT:0,      // 마지막 음성 인식 시각
+  accelGotData:false  // accelerationIncludingGravity 수신 여부(미지원 감지)
 };
-function rollGauge(){
-  // 중심 기준으로 좌(−)/우(+) 채움
-  var rA=Math.max(-20,Math.min(20,TRIG.rollAngle));
-  var f=$('rollFill');
-  var w=Math.abs(rA)/20*50;          // 채울 폭(%)
-  if(rA<0){ f.style.left=(50-w)+'%'; }   // 왼쪽으로
-  else    { f.style.left='50%'; }        // 오른쪽으로
-  f.style.width=w+'%';
-  $('rollVal').textContent=Math.round(TRIG.rollAngle)+'°';
+
+/* 두 벡터 사이 각도(°) */
+function vecAngle(a,b){
+  var dot=a.x*b.x+a.y*b.y+a.z*b.z;
+  var ma=Math.sqrt(a.x*a.x+a.y*a.y+a.z*a.z);
+  var mb=Math.sqrt(b.x*b.x+b.y*b.y+b.z*b.z);
+  if(ma<0.01||mb<0.01) return 0;
+  var c=dot/(ma*mb);
+  c=Math.max(-1,Math.min(1,c));
+  return Math.acos(c)*180/Math.PI;
 }
 
-function evalTrigger(pitchAngle){
-  // trigDir 가 'down' 이면 pitch 음수가 숙임 / 'up' 이면 양수
-  var trigDir=$('trigDir').value;
-  var pitchInto = (trigDir==='down') ? -pitchAngle : pitchAngle;
-  // roll: 왼쪽 기울임 = rollAngle 음수 방향 (rollDir 로 부호 보정)
-  var rollInto = -TRIG.rollAngle * (S.rollDirNeg?-1:1);
-
-  var on  = (pitchInto > TRIG.pitchOn) || (rollInto > TRIG.rollOn);
-  var off = (pitchInto < TRIG.pitchOn*TRIG.offFactor) &&
-            (rollInto  < TRIG.rollOn *TRIG.offFactor);
-
-  if(on && !S.armed && !S.thinking){
-    S.armed=true;
-    startListening();
-  } else if(off && S.armed){
-    S.armed=false;
-    if(S.listening) stopListening();
-    else setOrb(S.thinking?'thinking':'idle');
+/* 게이지 — pitch(숙임)/roll(좌우) 분해값을 막대에 반영 */
+function drawGauges(){
+  function bar(id,valId,v){
+    var cl=Math.max(-20,Math.min(20,v));
+    var f=$(id), w=Math.abs(cl)/20*50;
+    if(cl<0){ f.style.left=(50-w)+'%'; } else { f.style.left='50%'; }
+    f.style.width=w+'%';
+    $(valId).textContent=Math.round(v)+'°';
   }
-  refreshPills();
+  bar('pitchFill','pitchVal',TRIG.pitchComp);
+  bar('rollFill','rollVal',TRIG.rollComp);
+}
+
+/* 가속도(중력) 이벤트 — 절대 자세 측정 전용 리스너 */
+function onGravity(e){
+  var g=e.accelerationIncludingGravity;
+  if(!g || g.x==null) return;
+  TRIG.accelGotData=true;
+  TRIG.curGravity={x:g.x||0,y:g.y||0,z:g.z||0};
+
+  // 기준자세가 없으면(센서 시작 직후) 현재를 정면 기준으로 잡음
+  if(!TRIG.refGravity){
+    TRIG.refGravity={x:TRIG.curGravity.x,y:TRIG.curGravity.y,z:TRIG.curGravity.z};
+  }
+
+  // 기준 대비 이탈각 — 적분이 아니라 직접 측정 → 드리프트 없음, 안 풀림
+  TRIG.postureAngle=vecAngle(TRIG.refGravity,TRIG.curGravity);
+
+  // 게이지용 분해: 기준→현재 변화의 화면축 성분 (대략적 시각화)
+  var dx=TRIG.curGravity.x-TRIG.refGravity.x;
+  var dy=TRIG.curGravity.y-TRIG.refGravity.y;
+  // 휴대폰이 가로이므로 화면상 '숙임'≈y축, '좌우'≈x축 변화에 대응(부호 보정 가능)
+  TRIG.pitchComp=dy*(S.tiltDirNeg?-1:1)*3.2;
+  TRIG.rollComp =dx*(S.rollDirNeg?-1:1)*3.2;
+  drawGauges();
+
+  evalStateMachine();
+}
+
+/* 상태머신 평가 — 매 가속도/자이로 이벤트마다 호출 */
+function evalStateMachine(){
+  var now=Date.now();
+
+  if(TRIG.phase==='idle'){
+    // 진입은 자이로(아래 onGyroMotion)에서 arming 으로 전환됨. 여기선 대기.
+    return;
+  }
+
+  if(TRIG.phase==='arming'){
+    // 자이로 동작 후 — 정해진 시간 안에 '꺾인 자세'에 도달하면 ARMED
+    if(TRIG.postureAngle >= TRIG.postureOn){
+      TRIG.phase='armed';
+      S.armed=true;
+      startListening();
+      refreshPills();
+    } else if(now-TRIG.armingSince > TRIG.armWindow){
+      // 동작은 했지만 자세가 안 잡힘(스쳐 지나감) → 취소
+      TRIG.phase='idle';
+    }
+    return;
+  }
+
+  if(TRIG.phase==='armed'){
+    // 종료조건 ①: 정면 자세로 복귀 (절대각 — 가만히 있어도 안 풀림)
+    var posedBack = (TRIG.postureAngle < TRIG.postureOff);
+    // 종료조건 ②: 침묵 (보조)
+    var silent = (TRIG.silenceMs>0 && S.listening &&
+                  TRIG.lastSpeechT>0 &&
+                  (now-TRIG.lastSpeechT)>TRIG.silenceMs);
+    if(posedBack || silent){
+      TRIG.phase='idle';
+      S.armed=false;
+      if(S.listening) stopListening();
+      else setOrb(S.thinking?'thinking':'idle');
+      refreshPills();
+    }
+    return;
+  }
+}
+
+/* 자이로 동작 감지 — 진입 트리거 전용.
+ *  HeadMotion 모듈이 onTilt 로 주는 회전속도(tiltRate/spinRate)를 활용. */
+function onGyroMotion(tiltRate, spinRate){
+  if(TRIG.phase!=='idle' || S.thinking) return;
+  // 숙임 또는 좌우, 둘 중 하나라도 충분히 빠른 '꺾는 동작'이면 ARMING 진입
+  var moved = (Math.abs(tiltRate)>TRIG.gyroOn) ||
+              (Math.abs(spinRate)>TRIG.gyroOn);
+  if(moved){
+    TRIG.phase='arming';
+    TRIG.armingSince=Date.now();
+  }
 }
 
 function buildHeadMotion(){
-  TRIG.rollAngle=0; TRIG.lastT=0;
   return new HeadMotion({
     tiltAxis:$('tiltAxis').value,
     swipeAxis:$('swipeAxis').value,
@@ -1041,41 +1184,20 @@ function buildHeadMotion(){
     tiltDeadzone:5, tiltFull:14,
 
     onTilt:function(d){
-      // ── pitch 게이지 ──
-      var clamp=Math.max(-20,Math.min(20,d.angle));
-      var fill=$('pitchFill');
-      if(clamp>=0){ fill.style.left='50%'; fill.style.width=(clamp/20*50)+'%'; }
-      else        { fill.style.left=(50+clamp/20*50)+'%';
-                    fill.style.width=(-clamp/20*50)+'%'; }
-      $('pitchVal').textContent=Math.round(d.angle)+'°';
-
-      // ── roll 적분 (swipeAxis 회전속도) ──
+      // 모듈의 진단값에서 현재 회전속도(꺾는 동작 감지용)를 읽음
       var diag=hm?hm.getDiagnostics():null;
       if(diag){
-        var rr=diag.rotationRate;
-        var rollRate=(rr[$('swipeAxis').value]||0)*(S.swipeDirNeg?-1:1);
-        var now=Date.now();
-        var dt=(TRIG.lastT>0)?(now-TRIG.lastT)/1000:0.08;
-        TRIG.lastT=now;
-        if(dt>0.3) dt=0.3;
-        if(Math.abs(rollRate)>1.5) TRIG.rollAngle += rollRate*dt;
-        TRIG.rollAngle *= (1-0.05);                 // 약한 중심복귀
-        TRIG.rollAngle = Math.max(-45,Math.min(45,TRIG.rollAngle));
+        onGyroMotion(diag.tiltRate||0, diag.spinRate||0);
       }
-      rollGauge();
-
-      // ── 트리거 판정 (pitch OR roll) ──
-      evalTrigger(d.angle);
+      // 자이로 이벤트 시점에도 상태머신 한 번 평가(arming 타임아웃 등)
+      evalStateMachine();
     },
 
-    onSwipe:function(d){
-      // 좌우로 빠르게 휙 — 보조 제스처는 비활성(왼쪽 기울임 트리거와 혼동 방지)
-      // 필요하면 여기에 추가 동작을 둘 수 있음
-    },
+    onSwipe:function(d){ /* 보조 제스처 비활성 */ },
 
     onStatus:function(s){
       var map={
-        ready:'센서 동작 중 — 고개를 왼쪽 아래로 숙여 말하세요',
+        ready:'센서 동작 중 — 고개를 왼쪽 아래로 꺾어 말하세요',
         stopped:'센서 정지됨',
         denied:'⚠ 센서 권한 거부됨',
         unsupported:'⚠ DeviceMotion 미지원 브라우저',
@@ -1085,10 +1207,25 @@ function buildHeadMotion(){
       };
       logLine('setupLog',map[s]||s, (s==='ready'||s==='stopped')?'t':'e');
       if(s==='ready'){
-        S.sensorOn=true; refreshPills(); setOrb('idle');
+        S.sensorOn=true;
+        // 가속도(중력) 리스너 부착 — 절대 자세 측정용
+        window.addEventListener('devicemotion',onGravity,false);
+        // 가속도 데이터가 안 오면 유지 판정 불가 → 경고
+        setTimeout(function(){
+          if(!TRIG.accelGotData){
+            logLine('setupLog',
+              '⚠ 가속도(중력) 데이터가 없습니다 — 자세 유지 판정 불가. '
+              +'기기가 accelerationIncludingGravity 를 지원하는지 확인하세요.','e');
+          }
+        },2500);
+        refreshPills(); setOrb('idle');
       }
       if(s==='stopped'){
-        S.sensorOn=false; refreshPills();
+        S.sensorOn=false;
+        window.removeEventListener('devicemotion',onGravity,false);
+        TRIG.phase='idle'; TRIG.refGravity=null;
+        TRIG.accelGotData=false; S.armed=false;
+        refreshPills();
         $('orbLabel').textContent='센서 정지됨';
       }
     }
@@ -1096,11 +1233,13 @@ function buildHeadMotion(){
 }
 
 /* ---------------------------------------------------------------------------
- * 10. 진단 루프 — 축 보정용 rotationRate 표시
+ * 10. 진단 루프 — 상태머신 / 자세 / 자이로 실시간 표시
  * -------------------------------------------------------------------------*/
 setInterval(function(){
   if(!hm) return;
   var d=hm.getDiagnostics(), rr=d.rotationRate;
+
+  // 자이로 원시 회전속도
   $('dA').textContent=Math.round(rr.alpha);
   $('dB').textContent=Math.round(rr.beta);
   $('dG').textContent=Math.round(rr.gamma);
@@ -1108,6 +1247,15 @@ setInterval(function(){
   $('dA').className='v'+(Math.abs(rr.alpha)===mx&&mx>25?' big':'');
   $('dB').className='v'+(Math.abs(rr.beta)===mx &&mx>25?' big':'');
   $('dG').className='v'+(Math.abs(rr.gamma)===mx&&mx>25?' big':'');
+
+  // 상태머신 진단
+  var phEl=$('dPhase');
+  phEl.textContent={idle:'대기',arming:'동작감지',armed:'듣기ON'}[TRIG.phase]||TRIG.phase;
+  phEl.className='v'+(TRIG.phase==='armed'?' big':'');
+  var poEl=$('dPosture');
+  poEl.textContent=Math.round(TRIG.postureAngle)+'°';
+  poEl.className='v'+(TRIG.postureAngle>=TRIG.postureOn?' big':'');
+  $('dGyro').textContent=Math.round(mx);
 },140);
 
 /* ---------------------------------------------------------------------------
@@ -1146,13 +1294,22 @@ $('startBtn').addEventListener('click',function(){
 });
 $('recenterBtn').addEventListener('click',function(){
   if(hm){ hm.recenter(); }
-  TRIG.rollAngle=0; TRIG.lastT=0;
-  logLine('setupLog','고개 중심 재설정 완료 (숙임·좌우 모두 0°)','t');
+  // 현재 자세를 새 '정면 기준'으로 — 절대 자세 측정의 영점
+  TRIG.refGravity={x:TRIG.curGravity.x,y:TRIG.curGravity.y,z:TRIG.curGravity.z};
+  TRIG.postureAngle=0; TRIG.pitchComp=0; TRIG.rollComp=0;
+  if(TRIG.phase==='armed' && S.listening) stopListening();
+  TRIG.phase='idle'; S.armed=false;
+  drawGauges(); refreshPills();
+  logLine('setupLog','현재 자세를 정면 기준으로 재설정했습니다','t');
 });
 $('camOffBtn').addEventListener('click',stopCamera);
 $('camFullX').addEventListener('click',stopCamera);
+// 보정 섹션의 '정면 기준 잡기' 버튼 — 같은 동작
+$('recenterBtn2').addEventListener('click',function(){
+  $('recenterBtn').click();
+});
 
-// 축/방향 변경 → 인스턴스 재구성 (센서 켜져 있으면 재시작)
+// 축 변경 → 인스턴스 재구성 (센서 켜져 있으면 재시작)
 function rebuildIfRunning(){
   saveStore();
   if(sensorStarted && hm){
@@ -1161,12 +1318,38 @@ function rebuildIfRunning(){
     hm.start();
   }
 }
-['tiltAxis','swipeAxis','trigDir'].forEach(function(id){
+['tiltAxis','swipeAxis'].forEach(function(id){
   $(id).addEventListener('change',rebuildIfRunning);
 });
 $('lang').addEventListener('change',saveStore);
 $('model').addEventListener('change',saveStore);
 $('apiKey').addEventListener('change',saveStore);
+
+// ── 임계값 슬라이더 ──
+function bindRange(id, lblId, apply){
+  var el=$(id);
+  function upd(){
+    var v=parseFloat(el.value);
+    apply(v);
+    $(lblId).textContent=v;
+    saveStore();
+  }
+  el.addEventListener('input',upd);
+}
+bindRange('rngGyro','lblGyro',function(v){ TRIG.gyroOn=v; });
+bindRange('rngPostureOn','lblPostureOn',function(v){
+  TRIG.postureOn=v;
+  // postureOff 는 postureOn 보다 항상 작아야 함
+  if(TRIG.postureOff>=v){ TRIG.postureOff=Math.max(3,v-3);
+    $('rngPostureOff').value=TRIG.postureOff;
+    $('lblPostureOff').textContent=TRIG.postureOff; }
+});
+bindRange('rngPostureOff','lblPostureOff',function(v){
+  TRIG.postureOff=Math.min(v,TRIG.postureOn-2);
+  if(TRIG.postureOff!==v){ $('rngPostureOff').value=TRIG.postureOff;
+    $('lblPostureOff').textContent=TRIG.postureOff; }
+});
+bindRange('rngSilence','lblSilence',function(v){ TRIG.silenceMs=v*1000; });
 
 // 스위치들
 function bindSwitch(id, key, after){
@@ -1174,15 +1357,13 @@ function bindSwitch(id, key, after){
     this.classList.toggle('on');
     var on=this.classList.contains('on');
     if(key==='tiltDirNeg') S.tiltDirNeg=on;
-    if(key==='swipeDirNeg') S.swipeDirNeg=on;
     if(key==='rollDirNeg') S.rollDirNeg=on;
     if(key==='tts') S.tts=on;
     if(key==='autoCam') S.autoCam=on;
     if(after) after();
   });
 }
-bindSwitch('swTiltDir','tiltDirNeg',rebuildIfRunning);
-bindSwitch('swSwipeDir','swipeDirNeg',rebuildIfRunning);
+bindSwitch('swTiltDir','tiltDirNeg',saveStore);
 bindSwitch('swRollDir','rollDirNeg',saveStore);
 bindSwitch('swAutoCam','autoCam',saveStore);
 
@@ -1208,12 +1389,22 @@ $('testKey').addEventListener('click',function(){
   if(st.lang)   $('lang').value=st.lang;
   if(st.tiltAxis)  $('tiltAxis').value=st.tiltAxis;
   if(st.swipeAxis) $('swipeAxis').value=st.swipeAxis;
-  if(st.trigDir)   $('trigDir').value=st.trigDir;
-  S.trigDir=$('trigDir').value;
   if(st.tiltDirNeg){ S.tiltDirNeg=true; $('swTiltDir').classList.add('on'); }
-  if(st.swipeDirNeg){ S.swipeDirNeg=true; $('swSwipeDir').classList.add('on'); }
   if(st.rollDirNeg){ S.rollDirNeg=true; $('swRollDir').classList.add('on'); }
   if(st.autoCam){ S.autoCam=true; $('swAutoCam').classList.add('on'); }
+
+  // 임계값 복원 + 슬라이더 반영
+  function applyRange(stVal,trigKey,rngId,lblId,mul){
+    if(stVal==null) return;
+    var disp = mul ? stVal/mul : stVal;
+    TRIG[trigKey] = stVal;
+    $(rngId).value = disp;
+    $(lblId).textContent = disp;
+  }
+  applyRange(st.gyroOn,'gyroOn','rngGyro','lblGyro',null);
+  applyRange(st.postureOn,'postureOn','rngPostureOn','lblPostureOn',null);
+  applyRange(st.postureOff,'postureOff','rngPostureOff','lblPostureOff',null);
+  applyRange(st.silenceMs,'silenceMs','rngSilence','lblSilence',1000);
 
   // 환경 점검
   if(!window.isSecureContext){
