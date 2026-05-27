@@ -1,0 +1,1070 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#0b0e1a">
+<title>HeadAgent — 고개 제스처 음성 에이전트</title>
+<style>
+  :root{
+    --bg:#0b0e1a; --bg2:#10152b; --panel:#161c33; --line:#262e4d;
+    --ink:#eef1ff; --dim:#8b93b8; --faint:#5a6286;
+    --accent:#5ce1b8; --accent-deep:#0b3a2c;
+    --hot:#ff6b81; --warn:#ffb454; --cam:#7aa2ff;
+    --listen:#5ce1b8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    background:
+      radial-gradient(900px 500px at 80% -10%, rgba(92,225,184,.10), transparent 60%),
+      radial-gradient(700px 600px at -10% 100%, rgba(122,162,255,.10), transparent 55%),
+      var(--bg);
+    color:var(--ink);
+    font-family:-apple-system,"Noto Sans KR",Segoe UI,sans-serif;
+    padding:env(safe-area-inset-top) 14px env(safe-area-inset-bottom);
+    overscroll-behavior:none;
+  }
+  .wrap{max-width:520px;margin:0 auto;padding:16px 0 50px;}
+
+  /* ---- header ---- */
+  header{display:flex;align-items:center;gap:10px;}
+  .logo{
+    width:38px;height:38px;border-radius:11px;flex:none;
+    background:linear-gradient(145deg,var(--accent),#3aa9ff);
+    display:flex;align-items:center;justify-content:center;font-size:20px;
+    box-shadow:0 6px 20px -6px rgba(92,225,184,.6);
+  }
+  header h1{font-size:16px;font-weight:800;letter-spacing:-.2px;}
+  header p{font-size:10.5px;color:var(--dim);margin-top:1px;}
+
+  .sec{margin-top:14px;}
+  .sec-t{font-size:9.5px;letter-spacing:1.6px;color:var(--faint);
+         text-transform:uppercase;margin-bottom:7px;font-weight:700;}
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));
+        border:1px solid var(--line);border-radius:15px;padding:14px;}
+
+  code{font-family:'SF Mono',ui-monospace,Consolas,monospace;font-size:11px;
+       background:#0a0d18;padding:1px 5px;border-radius:5px;color:var(--accent);}
+
+  /* ---- setup / api key ---- */
+  .field{display:flex;flex-direction:column;gap:6px;}
+  .field label{font-size:11px;color:var(--dim);}
+  input[type=password],input[type=text]{
+    width:100%;background:#0a0d18;border:1px solid var(--line);
+    border-radius:9px;padding:11px 12px;color:var(--ink);font-size:13px;
+    font-family:inherit;outline:none;}
+  input:focus{border-color:var(--accent);}
+  .row{display:flex;gap:8px;}
+  .row>*{flex:1;}
+
+  select{
+    width:100%;background:#0a0d18;border:1px solid var(--line);
+    border-radius:9px;padding:9px 10px;color:var(--ink);font-size:12px;
+    font-family:inherit;outline:none;}
+
+  .btn{width:100%;border:none;border-radius:12px;padding:14px;
+       font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;
+       transition:transform .08s,opacity .15s;letter-spacing:-.2px;}
+  .btn:active{transform:scale(.985);}
+  .btn:disabled{opacity:.4;}
+  .btn-go{background:linear-gradient(135deg,var(--accent),#3aa9ff);color:#04241b;}
+  .btn-stop{background:#2a3252;color:var(--ink);}
+  .btn-ghost{background:#0a0d18;border:1px solid var(--line);color:var(--dim);
+             font-size:12px;padding:10px;}
+
+  /* ---- main agent stage ---- */
+  .stage{position:relative;border-radius:15px;overflow:hidden;
+         border:1px solid var(--line);background:#05070f;min-height:230px;
+         display:flex;flex-direction:column;}
+  /* camera layer */
+  #cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+       /* phone is rotated 90° CCW (camera on the left) → rotate feed back upright */
+       transform:rotate(90deg) scale(1.9);
+       opacity:0;transition:opacity .35s;background:#000;}
+  .stage.cam-on #cam{opacity:.55;}
+  .stage-veil{position:absolute;inset:0;
+       background:linear-gradient(180deg,rgba(5,7,15,.2),rgba(5,7,15,.85));}
+
+  .stage-inner{position:relative;z-index:2;padding:16px;display:flex;
+       flex-direction:column;height:100%;flex:1;}
+
+  /* big head/orb indicator */
+  .orb-area{flex:1;display:flex;flex-direction:column;align-items:center;
+            justify-content:center;gap:12px;text-align:center;}
+  .orb{
+    width:118px;height:118px;border-radius:50%;position:relative;
+    display:flex;align-items:center;justify-content:center;font-size:46px;
+    background:radial-gradient(circle at 38% 32%,#2b3358,#10152b);
+    border:2px solid var(--line);
+    transition:border-color .25s,box-shadow .25s,transform .25s;
+  }
+  .orb .ring{position:absolute;inset:-9px;border-radius:50%;
+             border:2px solid transparent;}
+  .orb.armed{border-color:var(--accent);
+             box-shadow:0 0 36px -4px rgba(92,225,184,.7);}
+  .orb.listening{border-color:var(--listen);transform:scale(1.05);
+             box-shadow:0 0 50px -2px rgba(92,225,184,.85);}
+  .orb.listening .ring{border-color:var(--listen);
+             animation:pulse 1.1s ease-out infinite;}
+  .orb.thinking{border-color:var(--cam);
+             box-shadow:0 0 40px -4px rgba(122,162,255,.7);}
+  .orb.thinking .ring{border-color:var(--cam);
+             animation:spin 1s linear infinite;border-top-color:transparent;
+             border-right-color:transparent;}
+  @keyframes pulse{0%{transform:scale(1);opacity:.9;}
+                   100%{transform:scale(1.4);opacity:0;}}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .orb-label{font-size:13px;font-weight:700;}
+  .orb-sub{font-size:11px;color:var(--dim);max-width:280px;line-height:1.6;}
+
+  /* tilt mini gauge */
+  .tiltmini{display:flex;align-items:center;gap:8px;justify-content:center;
+            margin-top:4px;}
+  .tiltmini .track{width:120px;height:6px;border-radius:4px;background:#0a0d18;
+            position:relative;overflow:hidden;}
+  .tiltmini .fill{position:absolute;top:0;bottom:0;left:50%;width:0;
+            background:var(--accent);border-radius:4px;transition:width .08s,left .08s;}
+  .tiltmini .val{font-size:10px;color:var(--faint);
+            font-variant-numeric:tabular-nums;width:42px;}
+
+  /* transcript / answer */
+  .bubble{margin-top:10px;border-radius:11px;padding:11px 12px;font-size:12.5px;
+          line-height:1.62;border:1px solid var(--line);}
+  .bubble.you{background:#0a0d18;color:var(--ink);}
+  .bubble.you .who{color:var(--accent);}
+  .bubble.ai{background:rgba(122,162,255,.08);color:var(--ink);
+             border-color:rgba(122,162,255,.3);}
+  .bubble.ai .who{color:var(--cam);}
+  .bubble .who{font-size:9.5px;letter-spacing:1px;font-weight:800;
+               text-transform:uppercase;display:block;margin-bottom:4px;}
+  .bubble.live{opacity:.6;font-style:italic;}
+
+  /* status pills */
+  .pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+  .pill{font-size:10px;font-weight:700;padding:5px 9px;border-radius:20px;
+        background:#0a0d18;border:1px solid var(--line);color:var(--dim);
+        display:flex;align-items:center;gap:5px;}
+  .pill .dot{width:6px;height:6px;border-radius:50%;background:var(--faint);}
+  .pill.on{color:var(--accent);border-color:rgba(92,225,184,.4);}
+  .pill.on .dot{background:var(--accent);box-shadow:0 0 6px var(--accent);}
+  .pill.cam.on{color:var(--cam);border-color:rgba(122,162,255,.4);}
+  .pill.cam.on .dot{background:var(--cam);box-shadow:0 0 6px var(--cam);}
+
+  /* diagnostics */
+  .diag{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;
+        background:var(--line);border-radius:9px;overflow:hidden;}
+  .diag .cell{background:var(--panel);padding:8px 4px;text-align:center;}
+  .diag .cell .k{font-size:8px;letter-spacing:.5px;color:var(--faint);}
+  .diag .cell .v{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums;
+                 margin-top:2px;}
+  .diag .cell .v.big{color:var(--accent);}
+
+  .log{font-size:10.5px;color:var(--faint);line-height:1.7;margin-top:8px;
+       max-height:90px;overflow-y:auto;font-family:'SF Mono',monospace;}
+  .log .t{color:var(--accent);}
+  .log .e{color:var(--hot);}
+
+  .hint{font-size:10.5px;color:var(--dim);line-height:1.75;}
+  .hint b{color:var(--ink);}
+  .hint ol{margin:5px 0 0 15px;} .hint li{margin:2px 0;}
+
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;
+              gap:10px;padding:3px 0;}
+  .toggle-row span{font-size:11.5px;color:var(--dim);}
+  .sw{width:42px;height:24px;border-radius:14px;background:#2a3252;
+      position:relative;cursor:pointer;transition:background .2s;flex:none;}
+  .sw.on{background:var(--accent);}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;
+       border-radius:50%;background:#fff;transition:left .2s;}
+  .sw.on::after{left:20px;}
+
+  .foot{font-size:9.5px;color:var(--faint);text-align:center;margin-top:18px;
+        line-height:1.7;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">🗣️</div>
+    <div>
+      <h1>HeadAgent</h1>
+      <p>고개를 왼쪽 아래로 꺾고 말하면 Gemini가 답합니다</p>
+    </div>
+  </header>
+
+  <!-- ============ SETUP ============ -->
+  <div class="sec" id="setupSec">
+    <div class="sec-t">설정</div>
+    <div class="card">
+      <div class="field">
+        <label>Gemini API Key</label>
+        <input type="password" id="apiKey" placeholder="AIza... (이 기기에만 저장)">
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <div class="field">
+          <label>모델</label>
+          <select id="model">
+            <option value="gemini-2.5-flash">gemini-2.5-flash (권장)</option>
+            <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (빠름)</option>
+            <option value="gemini-2.5-pro">gemini-2.5-pro (고품질)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>음성 언어</label>
+          <select id="lang">
+            <option value="ko-KR">한국어</option>
+            <option value="en-US">English</option>
+            <option value="ja-JP">日本語</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-ghost" id="testKey" style="margin-top:10px;">
+        API Key 연결 테스트
+      </button>
+      <div class="log" id="setupLog">키를 입력하고 테스트하거나 바로 시작하세요.</div>
+    </div>
+  </div>
+
+  <!-- ============ AGENT STAGE ============ -->
+  <div class="sec">
+    <div class="sec-t">에이전트 · 화면은 데모 확인용</div>
+    <div class="stage" id="stage">
+      <video id="cam" playsinline muted autoplay></video>
+      <div class="stage-veil"></div>
+      <div class="stage-inner">
+
+        <div class="pills">
+          <div class="pill" id="pillSensor"><span class="dot"></span>센서</div>
+          <div class="pill" id="pillArmed"><span class="dot"></span>대기</div>
+          <div class="pill cam" id="pillCam"><span class="dot"></span>카메라</div>
+        </div>
+
+        <div class="orb-area">
+          <div class="orb" id="orb">
+            <div class="ring"></div>
+            <span id="orbIcon">🧠</span>
+          </div>
+          <div class="orb-label" id="orbLabel">센서 시작을 눌러주세요</div>
+          <div class="orb-sub" id="orbSub">
+            휴대폰을 이마/얼굴 옆에 가로로 — 화면은 나를 향하고 카메라는 왼쪽.
+          </div>
+          <div class="tiltmini">
+            <span class="val" id="tiltValL">down</span>
+            <div class="track"><div class="fill" id="tiltFill"></div></div>
+            <span class="val" id="tiltVal">0°</span>
+          </div>
+        </div>
+
+        <div id="convo"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ CONTROLS ============ -->
+  <div class="sec">
+    <button class="btn btn-go" id="startBtn">▶ 센서 시작 — 권한 허용</button>
+    <div class="row" style="margin-top:8px;">
+      <button class="btn btn-ghost" id="recenterBtn" disabled>고개 중심 재설정</button>
+      <button class="btn btn-ghost" id="camOffBtn" disabled>카메라 끄기</button>
+    </div>
+  </div>
+
+  <!-- ============ AXIS CALIBRATION ============ -->
+  <div class="sec">
+    <div class="sec-t">축 보정 — 동작이 이상하면</div>
+    <div class="card">
+      <div class="hint" style="margin-bottom:10px;">
+        가로 회전 때문에 기기마다 축이 다릅니다. 아래 <b>α/β/γ</b> 값을 보며:
+        <ol>
+          <li>고개를 <b>위아래로</b> 끄덕 → 제일 크게 변하는 게 <code>tiltAxis</code></li>
+          <li>고개를 <b>좌우로</b> 휙 → 제일 크게 변하는 게 <code>swipeAxis</code></li>
+          <li>방향이 반대면 아래 부호 스위치를 뒤집으세요</li>
+        </ol>
+      </div>
+      <div class="diag">
+        <div class="cell"><div class="k">rotationRate α</div><div class="v" id="dA">0</div></div>
+        <div class="cell"><div class="k">rotationRate β</div><div class="v" id="dB">0</div></div>
+        <div class="cell"><div class="k">rotationRate γ</div><div class="v" id="dG">0</div></div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <div class="field">
+          <label>tiltAxis (상하)</label>
+          <select id="tiltAxis">
+            <option value="beta">beta</option>
+            <option value="alpha">alpha</option>
+            <option value="gamma">gamma</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>swipeAxis (좌우)</label>
+          <select id="swipeAxis">
+            <option value="alpha">alpha</option>
+            <option value="beta">beta</option>
+            <option value="gamma">gamma</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <div class="toggle-row">
+          <span>tilt 방향 뒤집기 <code>tiltDir</code></span>
+          <div class="sw" id="swTiltDir"></div>
+        </div>
+        <div class="toggle-row">
+          <span>swipe 방향 뒤집기 <code>swipeDir</code></span>
+          <div class="sw" id="swSwipeDir"></div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:10px;">
+        <label>트리거 방향 — 고개를 어느 쪽으로 꺾을 때 듣기 시작?</label>
+        <select id="trigDir">
+          <option value="down">아래로 숙일 때 (기본)</option>
+          <option value="up">위로 들 때</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ OPTIONS ============ -->
+  <div class="sec">
+    <div class="sec-t">옵션</div>
+    <div class="card">
+      <div class="hint" style="margin-bottom:10px;">
+        이 에이전트는 <b>음성으로만 답합니다</b> — 휴대폰이 얼굴 옆에 있어
+        화면을 못 보기 때문입니다. 위 화면 표시는 <b>데모 동작 확인용 미러</b>일
+        뿐, 실제 사용 중에는 보지 않아도 됩니다.
+      </div>
+      <div class="toggle-row">
+        <span>매 질문마다 카메라 프레임 자동 첨부</span>
+        <div class="sw" id="swAutoCam"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    HTTPS 필수 · 센서/마이크/카메라 권한 필요 · API 키는 브라우저에만 저장됩니다<br>
+    카메라 켜기: "<b>지금부터 같이 봐줘</b>" / 끄기: "<b>카메라 꺼</b>" 라고 말하세요
+  </div>
+
+</div>
+
+<!-- ======================================================================
+     headmotion.js  (모듈 본체 — 원본 그대로 인라인)
+     ====================================================================== -->
+<script>
+/* ============================================================================
+ * headmotion.js  —  헤드(이마 부착) 모션 센서 모듈  v1.0
+ * ==========================================================================*/
+(function (global) {
+  'use strict';
+  var DEFAULTS = {
+    tiltAxis:'beta', swipeAxis:'alpha', tiltDir:+1, swipeDir:-1,
+    tiltDeadzone:5, tiltFull:12, tiltGate:1.5, tiltRecenter:0.06, tiltClamp:40,
+    swipeThreshold:90, swipeRelease:25, swipeCooldown:900, loopInterval:80
+  };
+  function HeadMotion(opts){
+    opts = opts || {};
+    this.cfg = {};
+    for (var k in DEFAULTS){ this.cfg[k] = (opts[k]!==undefined)?opts[k]:DEFAULTS[k]; }
+    this.onTilt   = opts.onTilt   || function(){};
+    this.onSwipe  = opts.onSwipe  || function(){};
+    this.onStatus = opts.onStatus || function(){};
+    this._running=false; this._tiltRate=0; this._tiltAngle=0; this._spinRate=0;
+    this._spinArmed=true; this._lastSwipeT=0; this._lastMotionT=0;
+    this._eventCount=0; this._loopTimer=null;
+    this.diag={rotationRate:{alpha:0,beta:0,gamma:0},tiltRate:0,spinRate:0,
+               tiltAngle:0,eventCount:0,secure:false};
+    this._onMotion=this._onMotion.bind(this);
+    this._loop=this._loop.bind(this);
+  }
+  HeadMotion.prototype.start=function(){
+    var self=this;
+    this.diag.secure=!!global.isSecureContext;
+    if(!this.diag.secure) this.onStatus('insecure');
+    if(typeof DeviceMotionEvent==='undefined'){ this.onStatus('unsupported');
+      return Promise.resolve(false); }
+    var needsPermission=(typeof DeviceMotionEvent.requestPermission==='function');
+    function attach(){
+      global.addEventListener('devicemotion',self._onMotion,false);
+      self._running=true; self._lastMotionT=0; self._tiltAngle=0;
+      self._spinArmed=true;
+      self._loopTimer=setInterval(self._loop,self.cfg.loopInterval);
+      self.onStatus('ready');
+      setTimeout(function(){ if(self._eventCount===0) self.onStatus('no-events'); },2000);
+    }
+    if(needsPermission){
+      return DeviceMotionEvent.requestPermission().then(function(res){
+        if(res==='granted'){ attach(); return true; }
+        self.onStatus('denied'); return false;
+      }).catch(function(){ self.onStatus('error'); return false; });
+    } else { attach(); return Promise.resolve(true); }
+  };
+  HeadMotion.prototype.stop=function(){
+    if(!this._running) return;
+    this._running=false;
+    global.removeEventListener('devicemotion',this._onMotion,false);
+    if(this._loopTimer){ clearInterval(this._loopTimer); this._loopTimer=null; }
+    this._tiltAngle=0; this.onStatus('stopped');
+  };
+  HeadMotion.prototype.recenter=function(){
+    this._tiltAngle=0; this._lastMotionT=0;
+  };
+  HeadMotion.prototype._onMotion=function(e){
+    var rr=e.rotationRate; if(!rr) return;
+    this._eventCount++;
+    var a=(typeof rr.alpha==='number')?rr.alpha:0;
+    var b=(typeof rr.beta ==='number')?rr.beta :0;
+    var g=(typeof rr.gamma==='number')?rr.gamma:0;
+    var pick={alpha:a,beta:b,gamma:g};
+    var cfg=this.cfg;
+    this._spinRate=(pick[cfg.swipeAxis]||0)*cfg.swipeDir;
+    this._tiltRate=(pick[cfg.tiltAxis]||0)*cfg.tiltDir;
+    var t=(typeof e.timeStamp==='number')?e.timeStamp:Date.now();
+    var dt=(this._lastMotionT>0)?(t-this._lastMotionT)/1000:0.016;
+    this._lastMotionT=t;
+    if(dt>0.2) dt=0.2;
+    if(Math.abs(this._tiltRate)>cfg.tiltGate){
+      this._tiltAngle+=this._tiltRate*dt;
+    }
+    this._tiltAngle*=(1-cfg.tiltRecenter);
+    if(this._tiltAngle> cfg.tiltClamp) this._tiltAngle= cfg.tiltClamp;
+    if(this._tiltAngle<-cfg.tiltClamp) this._tiltAngle=-cfg.tiltClamp;
+    this.diag.rotationRate={alpha:a,beta:b,gamma:g};
+    this.diag.tiltRate=this._tiltRate; this.diag.spinRate=this._spinRate;
+    this.diag.tiltAngle=this._tiltAngle; this.diag.eventCount=this._eventCount;
+  };
+  HeadMotion.prototype._loop=function(){
+    if(!this._running) return;
+    var cfg=this.cfg;
+    var angle=this._tiltAngle, absA=Math.abs(angle);
+    var strength=0, direction='center';
+    if(absA>cfg.tiltDeadzone){
+      strength=(absA-cfg.tiltDeadzone)/(cfg.tiltFull-cfg.tiltDeadzone);
+      if(strength>1) strength=1; if(strength<0) strength=0;
+      direction=(angle>0)?'up':'down';
+    }
+    this.onTilt({angle:angle,direction:direction,strength:strength,
+                inDeadzone:(direction==='center')});
+    var now=Date.now(), spin=this._spinRate;
+    if(Math.abs(spin)<cfg.swipeRelease) this._spinArmed=true;
+    if(this._spinArmed && (now-this._lastSwipeT)>cfg.swipeCooldown){
+      if(spin>=cfg.swipeThreshold){
+        this._spinArmed=false; this._lastSwipeT=now;
+        this.onSwipe({direction:'right',speed:spin});
+      } else if(spin<=-cfg.swipeThreshold){
+        this._spinArmed=false; this._lastSwipeT=now;
+        this.onSwipe({direction:'left',speed:spin});
+      }
+    }
+  };
+  HeadMotion.prototype.getDiagnostics=function(){
+    return {running:this._running,secure:this.diag.secure,
+      eventCount:this.diag.eventCount,rotationRate:this.diag.rotationRate,
+      tiltRate:this.diag.tiltRate,spinRate:this.diag.spinRate,
+      tiltAngle:this.diag.tiltAngle};
+  };
+  global.HeadMotion=HeadMotion;
+  if(typeof module!=='undefined'&&module.exports){ module.exports=HeadMotion; }
+})(typeof window!=='undefined'?window:this);
+</script>
+
+<!-- ======================================================================
+     AGENT  —  센서 → 음성인식 → Gemini → 음성출력
+     ====================================================================== -->
+<script>
+(function(){
+'use strict';
+var $ = function(id){ return document.getElementById(id); };
+
+/* ---------------------------------------------------------------------------
+ * 0. 영속 저장 (API 키 / 보정값) — localStorage
+ * -------------------------------------------------------------------------*/
+var STORE_KEY = 'headagent.v1';
+function loadStore(){
+  try { return JSON.parse(localStorage.getItem(STORE_KEY)||'{}'); }
+  catch(e){ return {}; }
+}
+function saveStore(){
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      apiKey:$('apiKey').value.trim(),
+      model:$('model').value,
+      lang:$('lang').value,
+      tiltAxis:$('tiltAxis').value,
+      swipeAxis:$('swipeAxis').value,
+      tiltDirNeg:S.tiltDirNeg,
+      swipeDirNeg:S.swipeDirNeg,
+      trigDir:$('trigDir').value,
+      tts:S.tts, autoCam:S.autoCam
+    }));
+  } catch(e){}
+}
+
+/* ---------------------------------------------------------------------------
+ * 1. 전역 상태
+ * -------------------------------------------------------------------------*/
+var S = {
+  sensorOn:false,
+  armed:false,          // 트리거 방향으로 고개를 꺾은 상태인가
+  listening:false,      // 음성인식 진행 중
+  thinking:false,       // Gemini 호출 중
+  camOn:false,
+  tts:true,
+  autoCam:false,
+  tiltDirNeg:false,
+  swipeDirNeg:false,
+  trigDir:'down',
+  lastTiltDir:'center',
+  history:[]            // [{role:'user'|'model', text}]
+};
+
+var hm = null;          // HeadMotion 인스턴스
+var recog = null;       // SpeechRecognition
+var camStream = null;
+
+/* ---------------------------------------------------------------------------
+ * 2. 로그 / UI 헬퍼
+ * -------------------------------------------------------------------------*/
+function logLine(box, msg, cls){
+  var el = $(box);
+  var t = new Date().toLocaleTimeString('ko-KR',{hour12:false});
+  el.innerHTML = '<span class="'+(cls||'t')+'">['+t+']</span> '+msg
+                 + '<br>' + el.innerHTML;
+}
+function setOrb(state){
+  // state: idle | armed | listening | thinking
+  var orb=$('orb'), icon=$('orbIcon'), label=$('orbLabel'), sub=$('orbSub');
+  orb.className = 'orb' + (state==='idle'?'':' '+state);
+  if(state==='idle'){
+    icon.textContent='🧠'; label.textContent='대기 중';
+    sub.textContent='고개를 '+(S.trigDir==='down'?'아래로 숙이고':'위로 들고')+' 말하면 듣기 시작';
+  } else if(state==='armed'){
+    icon.textContent='👂'; label.textContent='듣고 있어요 — 말하세요';
+    sub.textContent='말이 끝나면 고개를 다시 정면으로 — 자동 전송';
+  } else if(state==='listening'){
+    icon.textContent='🎙️'; label.textContent='음성 인식 중…';
+    sub.textContent='또렷하게 말해주세요';
+  } else if(state==='thinking'){
+    icon.textContent='✨'; label.textContent='Gemini 가 생각 중…';
+    sub.textContent=S.camOn?'카메라 화면과 함께 분석 중':'답을 만들고 있어요';
+  }
+}
+function refreshPills(){
+  $('pillSensor').className = 'pill'+(S.sensorOn?' on':'');
+  $('pillArmed').className  = 'pill'+(S.armed||S.listening?' on':'');
+  $('pillArmed').lastChild && ($('pillArmed').childNodes[1].nodeValue =
+      S.listening?'인식중':(S.armed?'듣는중':'대기'));
+  $('pillCam').className = 'pill cam'+(S.camOn?' on':'');
+}
+function addBubble(kind, text, live){
+  var convo=$('convo');
+  if(live){
+    var ex=convo.querySelector('.bubble.live');
+    if(ex){ ex.querySelector('.txt').textContent=text; return; }
+  }
+  var b=document.createElement('div');
+  b.className='bubble '+kind+(live?' live':'');
+  b.innerHTML='<span class="who">'+(kind==='you'?'나':'Gemini')
+              +'</span><span class="txt"></span>';
+  b.querySelector('.txt').textContent=text;
+  convo.appendChild(b);
+  // 최근 4개만 유지
+  while(convo.children.length>4) convo.removeChild(convo.firstChild);
+  convo.scrollTop=convo.scrollHeight;
+  return b;
+}
+function clearLive(){
+  var convo=$('convo');
+  var ex=convo.querySelector('.bubble.live');
+  if(ex) ex.parentNode.removeChild(ex);
+}
+
+/* ---------------------------------------------------------------------------
+ * 3. 음성 출력 (TTS)
+ * -------------------------------------------------------------------------*/
+function speak(text){
+  if(!S.tts || !('speechSynthesis' in window)) return;
+  try{
+    window.speechSynthesis.cancel();
+    var u=new SpeechSynthesisUtterance(text);
+    u.lang=$('lang').value;
+    u.rate=1.04; u.pitch=1.0;
+    window.speechSynthesis.speak(u);
+  }catch(e){}
+}
+
+/* ---------------------------------------------------------------------------
+ * 4. 카메라
+ * -------------------------------------------------------------------------*/
+function startCamera(){
+  if(S.camOn) return Promise.resolve(true);
+  // 화면이 사용자 쪽 → 전면 카메라(user) 사용
+  return navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'user', width:{ideal:1280}, height:{ideal:720} },
+      audio:false
+    }).then(function(stream){
+      camStream=stream;
+      var v=$('cam'); v.srcObject=stream;
+      return v.play().catch(function(){});
+    }).then(function(){
+      S.camOn=true;
+      $('stage').classList.add('cam-on');
+      $('camOffBtn').disabled=false;
+      refreshPills();
+      logLine('setupLog','카메라 켜짐 — 이후 질문은 화면과 함께 분석됩니다','t');
+      return true;
+    }).catch(function(err){
+      logLine('setupLog','카메라 실패: '+err.message,'e');
+      return false;
+    });
+}
+function stopCamera(){
+  if(!S.camOn) return;
+  if(camStream){ camStream.getTracks().forEach(function(t){t.stop();}); }
+  camStream=null;
+  $('cam').srcObject=null;
+  S.camOn=false;
+  $('stage').classList.remove('cam-on');
+  $('camOffBtn').disabled=true;
+  refreshPills();
+  logLine('setupLog','카메라 꺼짐','t');
+}
+/* 현재 카메라 프레임을 jpeg base64 로 캡쳐.
+ * 휴대폰이 90° 가로(카메라 왼쪽)이므로 캔버스에서 회전 보정. */
+function captureFrame(){
+  var v=$('cam');
+  if(!v || !v.videoWidth) return null;
+  var vw=v.videoWidth, vh=v.videoHeight;
+  // 90° 회전 → 출력 캔버스의 가로/세로를 맞바꿈
+  var c=document.createElement('canvas');
+  c.width=vh; c.height=vw;
+  var ctx=c.getContext('2d');
+  ctx.translate(c.width/2,c.height/2);
+  ctx.rotate(Math.PI/2);              // 카메라 왼쪽 → +90° 보정
+  ctx.drawImage(v,-vw/2,-vh/2,vw,vh);
+  // 용량 절감 위해 다운스케일
+  var max=1024, scale=Math.min(1,max/Math.max(c.width,c.height));
+  if(scale<1){
+    var c2=document.createElement('canvas');
+    c2.width=Math.round(c.width*scale);
+    c2.height=Math.round(c.height*scale);
+    c2.getContext('2d').drawImage(c,0,0,c2.width,c2.height);
+    c=c2;
+  }
+  return c.toDataURL('image/jpeg',0.8).split(',')[1];
+}
+
+/* ---------------------------------------------------------------------------
+ * 5. 음성 명령 — 카메라 켜기/끄기 의도 감지
+ * -------------------------------------------------------------------------*/
+function detectCameraIntent(text){
+  var t=text.replace(/\s/g,'');
+  // "지금부터 같이 봐줘" 류 — 켜기
+  var onWords=['같이봐','같이보','함께봐','함께보','지금부터봐','지금부터같이',
+               '화면봐','화면보','이거봐','이것봐','이걸봐','이거좀봐','이것좀봐',
+               '보면서','화면보면서','카메라켜','카메라열','카메라보','봐줄래',
+               '봐줘','봐주라'];
+  // 끄기
+  var offWords=['카메라꺼','카메라끄','카메라닫','화면그만','그만봐','화면꺼',
+               '안봐도','그만볼래'];
+  for(var i=0;i<offWords.length;i++) if(t.indexOf(offWords[i])>=0) return 'off';
+  for(var j=0;j<onWords.length;j++)  if(t.indexOf(onWords[j])>=0) return 'on';
+  return null;
+}
+
+/* ---------------------------------------------------------------------------
+ * 6. Gemini 호출
+ * -------------------------------------------------------------------------*/
+function geminiCall(userText, imageB64){
+  var key=$('apiKey').value.trim();
+  var model=$('model').value;
+  if(!key) return Promise.reject(new Error('API Key 가 없습니다'));
+
+  var url='https://generativelanguage.googleapis.com/v1beta/models/'
+          +model+':generateContent';
+
+  // 대화 히스토리 → Gemini contents 포맷
+  var contents=[];
+  S.history.forEach(function(h){
+    contents.push({role:h.role,parts:[{text:h.text}]});
+  });
+  var parts=[{text:userText}];
+  if(imageB64){
+    parts.push({inline_data:{mime_type:'image/jpeg',data:imageB64}});
+  }
+  contents.push({role:'user',parts:parts});
+
+  var body={
+    system_instruction:{parts:[{text:
+      '너는 사용자의 이마/얼굴 옆에 부착된 휴대폰에서 동작하는 음성 비서다. '
+      +'사용자는 화면을 볼 수 없고 답을 귀로 듣는다. 그러므로 답변은 '
+      +'짧고 자연스러운 구어체로, 2~4문장 이내로 한다. 목록·마크다운·기호를 '
+      +'쓰지 말고 말하듯 답하라. 이미지가 함께 오면 그 화면 내용을 보고 답하라.'
+    }]},
+    contents:contents,
+    generationConfig:{ temperature:0.7, maxOutputTokens:400 }
+  };
+
+  return fetch(url,{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-goog-api-key':key},
+    body:JSON.stringify(body)
+  }).then(function(res){
+    return res.json().then(function(data){
+      if(!res.ok){
+        var m=(data&&data.error&&data.error.message)||('HTTP '+res.status);
+        throw new Error(m);
+      }
+      return data;
+    });
+  }).then(function(data){
+    var cand=data.candidates&&data.candidates[0];
+    if(!cand){ throw new Error('빈 응답 (안전 필터 가능)'); }
+    var txt='';
+    if(cand.content&&cand.content.parts){
+      cand.content.parts.forEach(function(p){ if(p.text) txt+=p.text; });
+    }
+    return txt.trim()||'(응답이 비어 있습니다)';
+  });
+}
+
+/* ---------------------------------------------------------------------------
+ * 7. 발화 처리 파이프라인
+ * -------------------------------------------------------------------------*/
+function handleUtterance(text){
+  text=(text||'').trim();
+  if(!text){ setOrb(S.sensorOn?'idle':'idle'); return; }
+
+  addBubble('you',text,false);
+
+  // (1) 카메라 명령 우선 처리
+  var camIntent=detectCameraIntent(text);
+  if(camIntent==='on'){
+    setOrb('thinking'); S.thinking=true; refreshPills();
+    startCamera().then(function(ok){
+      S.thinking=false; setOrb('idle'); refreshPills();
+      var msg=ok?'네, 카메라를 켰어요. 지금부터 보이는 화면을 같이 보면서 답할게요. 무엇을 도와드릴까요?'
+                :'카메라를 켤 수 없었어요. 권한을 확인해 주세요.';
+      addBubble('ai',msg,false); speak(msg);
+    });
+    return;
+  }
+  if(camIntent==='off'){
+    stopCamera();
+    var m='카메라를 껐어요.';
+    addBubble('ai',m,false); speak(m);
+    setOrb('idle');
+    return;
+  }
+
+  // (2) 일반 질문 → Gemini
+  //  · 카메라가 켜져 있으면 현재 프레임을 항상 첨부
+  //  · autoCam 옵션이 켜져 있으면, 카메라가 꺼져 있어도 자동으로 켜서 첨부
+  function proceed(){
+    var img = S.camOn ? captureFrame() : null;
+    setOrb('thinking'); S.thinking=true; refreshPills();
+    geminiCall(text,img).then(function(answer){
+      S.history.push({role:'user',text:text});
+      S.history.push({role:'model',text:answer});
+      if(S.history.length>12) S.history=S.history.slice(-12);
+      S.thinking=false; refreshPills();
+      setOrb('idle');
+      addBubble('ai',answer,false);
+      speak(answer);
+      logLine('setupLog','응답 완료'+(img?' (카메라 첨부)':''),'t');
+    }).catch(function(err){
+      S.thinking=false; refreshPills();
+      setOrb('idle');
+      var msg='오류: '+err.message;
+      addBubble('ai',msg,false);
+      if(S.tts) speak('요청 처리 중 문제가 생겼어요.');
+      logLine('setupLog',msg,'e');
+    });
+  }
+
+  if(S.autoCam && !S.camOn){
+    setOrb('thinking'); S.thinking=true; refreshPills();
+    startCamera().then(function(){
+      // 첫 프레임이 들어올 시간을 약간 확보
+      setTimeout(function(){ S.thinking=false; proceed(); }, 400);
+    });
+  } else {
+    proceed();
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 8. 음성 인식 (Web Speech API)
+ * -------------------------------------------------------------------------*/
+var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function buildRecognizer(){
+  if(!SR) return null;
+  var r=new SR();
+  r.lang=$('lang').value;
+  r.continuous=true;
+  r.interimResults=true;
+  r.maxAlternatives=1;
+  var finalText='';
+  r.onresult=function(ev){
+    var interim='';
+    finalText='';
+    for(var i=0;i<ev.results.length;i++){
+      var res=ev.results[i];
+      if(res.isFinal) finalText+=res[0].transcript;
+      else interim+=res[0].transcript;
+    }
+    var show=(finalText+' '+interim).trim();
+    if(show) addBubble('you',show,true);
+  };
+  r.onerror=function(ev){
+    logLine('setupLog','음성인식 오류: '+ev.error,'e');
+    if(ev.error==='not-allowed'){
+      addBubble('ai','마이크 권한이 필요해요. 브라우저 설정을 확인하세요.',false);
+    }
+  };
+  r.onend=function(){
+    S.listening=false;
+    refreshPills();
+    clearLive();
+    var captured=finalText.trim();
+    finalText='';
+    if(captured){
+      handleUtterance(captured);
+    } else {
+      // 아무 말도 안 했으면 그냥 대기로
+      if(!S.thinking) setOrb('idle');
+    }
+  };
+  r._getFinal=function(){ return finalText; };
+  return r;
+}
+function startListening(){
+  if(S.listening || S.thinking) return;
+  if(!SR){
+    addBubble('ai','이 브라우저는 음성 인식을 지원하지 않아요. (Chrome 권장)',false);
+    return;
+  }
+  recog=buildRecognizer();
+  if(!recog) return;
+  try{
+    recog.start();
+    S.listening=true;
+    refreshPills();
+    setOrb('armed');
+    if(window.speechSynthesis) window.speechSynthesis.cancel();
+  }catch(e){
+    logLine('setupLog','인식 시작 실패: '+e.message,'e');
+  }
+}
+function stopListening(){
+  if(!recog || !S.listening) return;
+  try{ recog.stop(); }catch(e){}
+  // onend 에서 handleUtterance 호출됨
+}
+
+/* ---------------------------------------------------------------------------
+ * 9. HeadMotion 콜백 — 트리거 로직
+ *    "고개를 (왼쪽) 아래로 꺾는다" = tilt 가 trigDir 방향으로 데드존을 넘음
+ *    꺾은 동안 listening 유지, 정면 복귀하면 stop → 전송
+ * -------------------------------------------------------------------------*/
+function buildHeadMotion(){
+  var trigDir=$('trigDir').value;
+  return new HeadMotion({
+    tiltAxis:$('tiltAxis').value,
+    swipeAxis:$('swipeAxis').value,
+    tiltDir:S.tiltDirNeg?-1:+1,
+    swipeDir:S.swipeDirNeg?-1:+1,
+    // 트리거를 또렷하게: 데드존/풀 각도 살짝 키움
+    tiltDeadzone:6, tiltFull:14,
+
+    onTilt:function(d){
+      // 미니 게이지
+      var clamp=Math.max(-20,Math.min(20,d.angle));
+      var fill=$('tiltFill');
+      if(clamp>=0){ fill.style.left='50%'; fill.style.width=(clamp/20*50)+'%'; }
+      else        { fill.style.left=(50+clamp/20*50)+'%';
+                    fill.style.width=(-clamp/20*50)+'%'; }
+      $('tiltVal').textContent=Math.round(d.angle)+'°';
+      $('tiltValL').textContent=d.direction;
+
+      // 트리거 판정: 현재 꺾인 방향이 trigDir 와 일치 + 데드존 밖
+      var triggered = (!d.inDeadzone && d.direction===trigDir);
+
+      if(triggered && !S.armed && !S.thinking){
+        // 막 꺾었다 → 듣기 시작
+        S.armed=true;
+        startListening();
+      } else if(!triggered && S.armed){
+        // 정면으로 복귀 → 듣기 종료 & 전송
+        S.armed=false;
+        if(S.listening) stopListening();
+        else setOrb(S.thinking?'thinking':'idle');
+      }
+      refreshPills();
+    },
+
+    onSwipe:function(d){
+      // 좌우 휙 — 보조 동작: 오른쪽=대화 초기화, 왼쪽=카메라 토글
+      if(d.direction==='right'){
+        S.history=[];
+        $('convo').innerHTML='';
+        addBubble('ai','대화를 초기화했어요.',false);
+      } else {
+        if(S.camOn) stopCamera(); else startCamera();
+      }
+    },
+
+    onStatus:function(s){
+      var map={
+        ready:'센서 동작 중 — 고개를 꺾어 말하세요',
+        stopped:'센서 정지됨',
+        denied:'⚠ 센서 권한 거부됨',
+        unsupported:'⚠ DeviceMotion 미지원 브라우저',
+        insecure:'⚠ 비보안 환경 — HTTPS 필요',
+        'no-events':'⚠ 센서 이벤트 없음 — 권한/HTTPS 확인',
+        error:'⚠ 센서 오류'
+      };
+      logLine('setupLog',map[s]||s, (s==='ready'||s==='stopped')?'t':'e');
+      if(s==='ready'){
+        S.sensorOn=true; refreshPills(); setOrb('idle');
+      }
+      if(s==='stopped'){
+        S.sensorOn=false; refreshPills();
+        $('orbLabel').textContent='센서 정지됨';
+      }
+    }
+  });
+}
+
+/* ---------------------------------------------------------------------------
+ * 10. 진단 루프 — 축 보정용 rotationRate 표시
+ * -------------------------------------------------------------------------*/
+setInterval(function(){
+  if(!hm) return;
+  var d=hm.getDiagnostics(), rr=d.rotationRate;
+  $('dA').textContent=Math.round(rr.alpha);
+  $('dB').textContent=Math.round(rr.beta);
+  $('dG').textContent=Math.round(rr.gamma);
+  var mx=Math.max(Math.abs(rr.alpha),Math.abs(rr.beta),Math.abs(rr.gamma));
+  $('dA').className='v'+(Math.abs(rr.alpha)===mx&&mx>25?' big':'');
+  $('dB').className='v'+(Math.abs(rr.beta)===mx &&mx>25?' big':'');
+  $('dG').className='v'+(Math.abs(rr.gamma)===mx&&mx>25?' big':'');
+},140);
+
+/* ---------------------------------------------------------------------------
+ * 11. 컨트롤 바인딩
+ * -------------------------------------------------------------------------*/
+var sensorStarted=false;
+$('startBtn').addEventListener('click',function(){
+  if(!sensorStarted){
+    hm=buildHeadMotion();
+    hm.start().then(function(ok){
+      if(ok){
+        sensorStarted=true;
+        $('startBtn').textContent='■ 센서 정지';
+        $('startBtn').className='btn btn-stop';
+        $('recenterBtn').disabled=false;
+        // 마이크 권한 미리 한번 띄우기(선택)
+        if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+          navigator.mediaDevices.getUserMedia({audio:true})
+            .then(function(st){ st.getTracks().forEach(function(t){t.stop();}); })
+            .catch(function(){});
+        }
+      } else {
+        logLine('setupLog','센서를 시작할 수 없습니다','e');
+      }
+    });
+  } else {
+    if(hm) hm.stop();
+    if(S.listening) stopListening();
+    stopCamera();
+    sensorStarted=false; S.sensorOn=false;
+    $('startBtn').textContent='▶ 센서 시작 — 권한 허용';
+    $('startBtn').className='btn btn-go';
+    $('recenterBtn').disabled=true;
+    refreshPills();
+  }
+});
+$('recenterBtn').addEventListener('click',function(){
+  if(hm){ hm.recenter(); logLine('setupLog','고개 중심 재설정 완료','t'); }
+});
+$('camOffBtn').addEventListener('click',stopCamera);
+
+// 축/방향 변경 → 인스턴스 재구성 (센서 켜져 있으면 재시작)
+function rebuildIfRunning(){
+  saveStore();
+  if(sensorStarted && hm){
+    hm.stop();
+    hm=buildHeadMotion();
+    hm.start();
+  }
+}
+['tiltAxis','swipeAxis','trigDir'].forEach(function(id){
+  $(id).addEventListener('change',rebuildIfRunning);
+});
+$('lang').addEventListener('change',saveStore);
+$('model').addEventListener('change',saveStore);
+$('apiKey').addEventListener('change',saveStore);
+
+// 스위치들
+function bindSwitch(id, key, after){
+  $(id).addEventListener('click',function(){
+    this.classList.toggle('on');
+    var on=this.classList.contains('on');
+    if(key==='tiltDirNeg') S.tiltDirNeg=on;
+    if(key==='swipeDirNeg') S.swipeDirNeg=on;
+    if(key==='tts') S.tts=on;
+    if(key==='autoCam') S.autoCam=on;
+    if(after) after();
+  });
+}
+bindSwitch('swTiltDir','tiltDirNeg',rebuildIfRunning);
+bindSwitch('swSwipeDir','swipeDirNeg',rebuildIfRunning);
+bindSwitch('swAutoCam','autoCam',saveStore);
+
+// API 키 테스트
+$('testKey').addEventListener('click',function(){
+  var btn=this; btn.disabled=true; btn.textContent='테스트 중…';
+  geminiCall('한 단어로 "연결됨" 이라고만 답해줘.',null).then(function(t){
+    logLine('setupLog','✓ API 연결 성공 — 모델 응답: '+t,'t');
+  }).catch(function(e){
+    logLine('setupLog','✗ API 연결 실패: '+e.message,'e');
+  }).then(function(){
+    btn.disabled=false; btn.textContent='API Key 연결 테스트';
+  });
+});
+
+/* ---------------------------------------------------------------------------
+ * 12. 초기화 — 저장값 복원
+ * -------------------------------------------------------------------------*/
+(function init(){
+  var st=loadStore();
+  if(st.apiKey) $('apiKey').value=st.apiKey;
+  if(st.model)  $('model').value=st.model;
+  if(st.lang)   $('lang').value=st.lang;
+  if(st.tiltAxis)  $('tiltAxis').value=st.tiltAxis;
+  if(st.swipeAxis) $('swipeAxis').value=st.swipeAxis;
+  if(st.trigDir)   $('trigDir').value=st.trigDir;
+  S.trigDir=$('trigDir').value;
+  if(st.tiltDirNeg){ S.tiltDirNeg=true; $('swTiltDir').classList.add('on'); }
+  if(st.swipeDirNeg){ S.swipeDirNeg=true; $('swSwipeDir').classList.add('on'); }
+  if(st.autoCam){ S.autoCam=true; $('swAutoCam').classList.add('on'); }
+
+  // 환경 점검
+  if(!window.isSecureContext){
+    logLine('setupLog','⚠ HTTPS 가 아닙니다 — 센서/마이크가 막힐 수 있어요','e');
+  }
+  if(!SR){
+    logLine('setupLog','⚠ 음성 인식 미지원 브라우저 — Chrome 을 권장합니다','e');
+  }
+  refreshPills();
+  setOrb('idle');
+  $('orbLabel').textContent='센서 시작을 눌러주세요';
+})();
+
+})();
+</script>
+</body>
+</html>
