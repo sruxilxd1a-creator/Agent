@@ -92,10 +92,8 @@
   .stage{position:relative;border-radius:15px;overflow:hidden;
          border:1px solid var(--line);background:#05070f;min-height:230px;
          display:flex;flex-direction:column;}
-  /* camera layer */
+  /* camera layer (stage 배경용 — 가로 그대로) */
   #cam{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
-       /* phone is rotated 90° CCW (camera on the left) → rotate feed back upright */
-       transform:rotate(90deg) scale(1.9);
        opacity:0;transition:opacity .35s;background:#000;}
   .stage.cam-on #cam{opacity:.55;}
   .stage-veil{position:absolute;inset:0;
@@ -149,10 +147,9 @@
   /* fullscreen camera preview overlay */
   .camfull{position:fixed;inset:0;z-index:100;background:#000;display:none;}
   .camfull.show{display:block;}
-  #camFullVideo{position:absolute;inset:0;width:100%;height:100%;
-       object-fit:cover;background:#000;
-       /* 휴대폰이 90° 가로(카메라 왼쪽) → 영상을 세워 보여줌 */
-       transform:rotate(90deg) scale(1.78);}
+  #camFullVideo{position:absolute;background:#000;
+       object-fit:cover;transform-origin:center center;
+       top:50%;left:50%;}
   .camfull-top{position:absolute;top:0;left:0;right:0;z-index:2;
        padding:calc(env(safe-area-inset-top) + 12px) 14px 28px;
        background:linear-gradient(180deg,rgba(0,0,0,.7),transparent);
@@ -423,13 +420,16 @@
     <div class="sec-t">옵션</div>
     <div class="card">
       <div class="hint" style="margin-bottom:10px;">
-        이 에이전트는 <b>음성으로만 답합니다</b> — 휴대폰이 얼굴 옆에 있어
-        화면을 못 보기 때문입니다. 위 화면 표시는 <b>데모 동작 확인용 미러</b>일
-        뿐, 실제 사용 중에는 보지 않아도 됩니다.
+        응답은 <b>음성</b>으로 전달됩니다 (화면 표시는 데모 확인용).
+        <b>카메라 모드</b>에서는 고개 동작 없이 보이는 화면에 대해 바로
+        말하면 되고, 말을 멈추면 그 발화가 화면과 함께 전송됩니다.
       </div>
-      <div class="toggle-row">
-        <span>매 질문마다 카메라 프레임 자동 첨부</span>
-        <div class="sw" id="swAutoCam"></div>
+      <div class="field">
+        <label>카메라 모드 — 말 끝 판정 침묵 시간
+          <b id="lblCamGap">1.2</b> 초
+          <span style="color:var(--faint);">(짧을수록 빨리 전송)</span>
+        </label>
+        <input type="range" id="rngCamGap" min="0.6" max="3" step="0.1" value="1.2">
       </div>
     </div>
   </div>
@@ -458,7 +458,7 @@
       <span class="who">Gemini</span><span class="txt"></span>
     </div>
     <div class="camfull-hint" id="camFullHint">
-      고개를 왼쪽 아래로 숙이고 화면에 대해 물어보세요 · "카메라 꺼"로 종료
+      보이는 화면에 대해 바로 말하세요 — 고개 동작 불필요 · "카메라 꺼"로 종료
     </div>
   </div>
 </div>
@@ -613,7 +613,7 @@ function saveStore(){
       postureOn:TRIG.postureOn,
       postureOff:TRIG.postureOff,
       silenceMs:TRIG.silenceMs,
-      tts:S.tts, autoCam:S.autoCam
+      tts:S.tts, camGap:camConvo.silenceGap
     }));
   } catch(e){}
 }
@@ -629,7 +629,6 @@ var S = {
   speaking:false,       // TTS 응답 재생 중 — 이 동안 트리거 무시
   camOn:false,
   tts:true,
-  autoCam:false,
   tiltDirNeg:false,     // 숙임 게이지 시각화 방향
   rollDirNeg:false,     // 좌우 게이지 시각화 방향
   swipeDirNeg:false,    // 모듈 swipeDir 설정용(자이로 부호)
@@ -652,8 +651,9 @@ function logLine(box, msg, cls){
 function setOrb(state){
   // state: idle | armed | listening | thinking | speaking
   var orb=$('orb'), icon=$('orbIcon'), label=$('orbLabel'), sub=$('orbSub');
-  // speaking 은 thinking 과 같은 애니메이션(파란 링) 재사용
-  var cls = (state==='speaking') ? 'thinking' : state;
+  // speaking 은 thinking 과 같은 애니메이션(파란 링), camlisten 은 listening 재사용
+  var cls = (state==='speaking') ? 'thinking'
+          : (state==='camlisten') ? 'listening' : state;
   orb.className = 'orb' + (cls==='idle'?'':' '+cls);
   if(state==='idle'){
     icon.textContent='🧠'; label.textContent='대기 중';
@@ -664,6 +664,9 @@ function setOrb(state){
   } else if(state==='listening'){
     icon.textContent='🎙️'; label.textContent='음성 인식 중…';
     sub.textContent='또렷하게 말해주세요';
+  } else if(state==='camlisten'){
+    icon.textContent='👁️'; label.textContent='화면 보며 듣는 중';
+    sub.textContent='보이는 화면에 대해 바로 말하세요 — 고개 동작 불필요';
   } else if(state==='thinking'){
     icon.textContent='✨'; label.textContent='Gemini 가 생각 중…';
     sub.textContent=S.camOn?'카메라 화면과 함께 분석 중':'답을 만들고 있어요';
@@ -674,7 +677,8 @@ function setOrb(state){
   // 전체화면 카메라 오버레이 상태 미러
   if(S.camOn && typeof setCamState==='function'){
     setCamState({idle:'대기',armed:'듣는 중',listening:'인식 중',
-                 thinking:'분석 중…',speaking:'답하는 중'}[state]||'대기');
+                 camlisten:'듣는 중 👁',thinking:'분석 중…',
+                 speaking:'답하는 중'}[state]||'대기');
   }
 }
 function refreshPills(){
@@ -726,10 +730,21 @@ function speak(text){
     u.rate=1.04; u.pitch=1.0;
     u.onstart=function(){ S.speaking=true;  refreshPills();
                           setOrb('speaking'); };
-    u.onend  =function(){ S.speaking=false; refreshPills();
-                          if(!S.thinking && !S.listening) setOrb('idle'); };
-    u.onerror=function(){ S.speaking=false; refreshPills();
-                          if(!S.thinking && !S.listening) setOrb('idle'); };
+    u.onend  =function(){
+      S.speaking=false; refreshPills();
+      if(camConvo.active){
+        // 카메라 대화 모드 — 발화 끝나면 인식 재개
+        setOrb('camlisten');
+        camStartRecog();
+      } else if(!S.thinking && !S.listening){
+        setOrb('idle');
+      }
+    };
+    u.onerror=function(){
+      S.speaking=false; refreshPills();
+      if(camConvo.active){ setOrb('camlisten'); camStartRecog(); }
+      else if(!S.thinking && !S.listening){ setOrb('idle'); }
+    };
     window.speechSynthesis.speak(u);
   }catch(e){ S.speaking=false; }
 }
@@ -742,13 +757,46 @@ function stopSpeaking(){
 /* ---------------------------------------------------------------------------
  * 4. 카메라  —  외부(후면) 카메라 + 전체화면 프리뷰
  * -------------------------------------------------------------------------*/
+/* ---------------------------------------------------------------------------
+ *  전체화면 프리뷰 비디오 레이아웃
+ *  휴대폰을 가로로 들면 카메라 프레임은 가로(landscape)로 들어온다.
+ *  뷰포트도 가로면 그대로 채우면 되고(회전 0), 만약 OS 회전잠금 때문에
+ *  뷰포트가 세로인데 기기는 가로로 들고 있다면 영상을 90° 돌려서 채운다.
+ *  어느 경우든 검은 여백 없이 화면을 꽉 채우도록 크기를 계산한다.
+ * -------------------------------------------------------------------------*/
+function layoutCamVideo(){
+  var v=$('camFullVideo');
+  if(!v || !v.videoWidth) return;
+  var vw=v.videoWidth, vh=v.videoHeight;          // 카메라 프레임(보통 가로)
+  var sw=window.innerWidth, sh=window.innerHeight; // 뷰포트
+
+  // 카메라 프레임은 가로(vw>vh)라고 가정. 뷰포트가 세로면 영상을 회전해야 함.
+  var rotate = (sh > sw);   // 뷰포트가 세로 = 기기 가로인데 페이지가 세로잠금
+  var deg = rotate ? 90 : 0;
+
+  // 회전 후 'cover'가 되도록: 회전하면 영상의 가로/세로가 화면 기준 뒤바뀜
+  var boxW = rotate ? sh : sw;   // 영상이 채워야 할 (회전 전) 폭
+  var boxH = rotate ? sw : sh;   // 영상이 채워야 할 (회전 전) 높이
+  // cover 스케일
+  var scale = Math.max(boxW/vw, boxH/vh);
+  var w = vw*scale, h = vh*scale;
+
+  v.style.width  = w+'px';
+  v.style.height = h+'px';
+  v.style.transform = 'translate(-50%,-50%) rotate('+deg+'deg)';
+}
+window.addEventListener('resize',layoutCamVideo);
+window.addEventListener('orientationchange',function(){
+  setTimeout(layoutCamVideo,300);
+});
+
 function showCamFull(on){
   $('camFull').classList.toggle('show', !!on);
 }
 function setCamState(txt){
   var el=$('camFullState'); if(el) el.textContent=txt;
 }
-/* 전체화면 자막 미러 — 데모 확인용 */
+/* 전체화면 자막 미러 */
 function camCaption(kind, text){
   var el=$(kind==='you'?'camFullYou':'camFullAI');
   var other=$(kind==='you'?'camFullAI':'camFullYou');
@@ -759,28 +807,22 @@ function camCaption(kind, text){
   } else {
     el.style.display='none';
   }
-  // 질문이 새로 들어오면 이전 답변 숨김
   if(kind==='you' && text && other) other.style.display='none';
 }
 
 function startCamera(){
   if(S.camOn) return Promise.resolve(true);
-  // 휴대폰이 이마에 붙어 화면이 사용자 쪽 → 보이는 건 후면(외부) 카메라
-  // facingMode:'environment' 우선, 실패 시 제약 없이 재시도
-  function req(constraints){
-    return navigator.mediaDevices.getUserMedia(constraints);
-  }
+  // 화면이 사용자 쪽 → 보이는 건 후면(외부) 카메라
+  function req(c){ return navigator.mediaDevices.getUserMedia(c); }
   return req({ video:{ facingMode:{ideal:'environment'},
-                       width:{ideal:1280}, height:{ideal:720} }, audio:false })
-    .catch(function(){
-      // 일부 기기는 ideal 거부 → 기본 카메라로 폴백
-      return req({ video:true, audio:false });
-    })
+                       width:{ideal:1920}, height:{ideal:1080} }, audio:false })
+    .catch(function(){ return req({ video:true, audio:false }); })
     .then(function(stream){
       camStream=stream;
-      // 전체화면 프리뷰 비디오 + 백그라운드 스테이지 비디오 둘 다 같은 스트림
       var vf=$('camFullVideo'), vs=$('cam');
       vf.srcObject=stream; vs.srcObject=stream;
+      // 비디오 메타데이터(해상도)가 준비되면 레이아웃 계산
+      vf.onloadedmetadata=function(){ layoutCamVideo(); };
       var p1=vf.play().catch(function(){});
       var p2=vs.play().catch(function(){});
       return Promise.all([p1,p2]);
@@ -790,8 +832,11 @@ function startCamera(){
       $('camOffBtn').disabled=false;
       showCamFull(true);
       setCamState('대기');
+      setTimeout(layoutCamVideo,150);   // 메타데이터 늦게 올 때 대비
       refreshPills();
-      logLine('setupLog','외부 카메라 켜짐 — 전체화면 프리뷰 표시','t');
+      logLine('setupLog','외부 카메라 켜짐 — 실시간 대화 모드','t');
+      // 카메라 모드 = 핸즈프리 연속 대화 시작
+      startCameraConversation();
       return true;
     }).catch(function(err){
       logLine('setupLog','카메라 실패: '+err.message,'e');
@@ -809,33 +854,26 @@ function stopCamera(){
   $('camOffBtn').disabled=true;
   showCamFull(false);
   camCaption('you',''); camCaption('ai','');
+  // 카메라 모드 연속 인식 종료
+  stopCameraConversation();
   refreshPills();
-  logLine('setupLog','카메라 꺼짐','t');
+  setOrb('idle');
+  logLine('setupLog','카메라 꺼짐 — 고개 트리거 모드로 복귀','t');
 }
 /* 현재 카메라 프레임을 jpeg base64 로 캡쳐.
- * 휴대폰이 90° 가로(카메라 왼쪽)이므로 캔버스에서 회전 보정. */
+ * 프레임은 이미 가로(올바른 방향)이므로 회전 보정 불필요. */
 function captureFrame(){
   var v=$('camFullVideo');
   if(!v || !v.videoWidth) v=$('cam');
   if(!v || !v.videoWidth) return null;
   var vw=v.videoWidth, vh=v.videoHeight;
-  // 90° 회전 → 출력 캔버스의 가로/세로를 맞바꿈
   var c=document.createElement('canvas');
-  c.width=vh; c.height=vw;
-  var ctx=c.getContext('2d');
-  ctx.translate(c.width/2,c.height/2);
-  ctx.rotate(Math.PI/2);              // 카메라 왼쪽 → +90° 보정
-  ctx.drawImage(v,-vw/2,-vh/2,vw,vh);
-  // 용량 절감 위해 다운스케일
-  var max=1024, scale=Math.min(1,max/Math.max(c.width,c.height));
-  if(scale<1){
-    var c2=document.createElement('canvas');
-    c2.width=Math.round(c.width*scale);
-    c2.height=Math.round(c.height*scale);
-    c2.getContext('2d').drawImage(c,0,0,c2.width,c2.height);
-    c=c2;
-  }
-  return c.toDataURL('image/jpeg',0.8).split(',')[1];
+  // 다운스케일(긴 변 최대 1024) — 용량 절감
+  var max=1024, scale=Math.min(1,max/Math.max(vw,vh));
+  c.width=Math.round(vw*scale);
+  c.height=Math.round(vh*scale);
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',0.82).split(',')[1];
 }
 
 /* ---------------------------------------------------------------------------
@@ -878,13 +916,24 @@ function geminiCall(userText, imageB64){
   }
   contents.push({role:'user',parts:parts});
 
+  var camMode = camConvo.active;
+  var sysText =
+    '너는 사용자의 얼굴 옆에 가로로 부착된 휴대폰에서 동작하는 음성 비서다. '
+    +'사용자는 화면을 보지 않고 답을 귀로 듣는다. 답변은 짧고 자연스러운 '
+    +'구어체로 2~4문장 이내로 하고, 목록·마크다운·기호 없이 말하듯 답하라.';
+  if(camMode){
+    sysText +=
+      ' 지금은 카메라 실시간 대화 모드다. 함께 전달되는 이미지는 사용자가 '
+      +'지금 카메라로 보고 있는 바로 그 장면이다. "이거", "지금 보는 거", '
+      +'"저기" 같은 말은 그 화면 속 대상을 가리킨다. 화면을 직접 보고 있는 '
+      +'것처럼 구체적으로, 무엇이 보이는지에 근거해 답하라. 화면에서 답을 '
+      +'알 수 없으면 솔직히 그렇게 말하라.';
+  } else {
+    sysText += ' 이미지가 함께 오면 그 화면 내용을 보고 답하라.';
+  }
+
   var body={
-    system_instruction:{parts:[{text:
-      '너는 사용자의 이마/얼굴 옆에 부착된 휴대폰에서 동작하는 음성 비서다. '
-      +'사용자는 화면을 볼 수 없고 답을 귀로 듣는다. 그러므로 답변은 '
-      +'짧고 자연스러운 구어체로, 2~4문장 이내로 한다. 목록·마크다운·기호를 '
-      +'쓰지 말고 말하듯 답하라. 이미지가 함께 오면 그 화면 내용을 보고 답하라.'
-    }]},
+    system_instruction:{parts:[{text:sysText}]},
     contents:contents,
     generationConfig:{ temperature:0.7, maxOutputTokens:400 }
   };
@@ -926,10 +975,12 @@ function handleUtterance(text){
   if(camIntent==='on'){
     setOrb('thinking'); S.thinking=true; refreshPills();
     startCamera().then(function(ok){
-      S.thinking=false; setOrb('idle'); refreshPills();
-      var msg=ok?'네, 카메라를 켰어요. 지금부터 보이는 화면을 같이 보면서 답할게요. 무엇을 도와드릴까요?'
+      S.thinking=false; refreshPills();
+      var msg=ok?'네, 카메라를 켰어요. 지금 보이는 화면에 대해 바로 말씀하시면 돼요. 고개를 숙이지 않아도 됩니다.'
                 :'카메라를 켤 수 없었어요. 권한을 확인해 주세요.';
       addBubble('ai',msg,false); speak(msg);
+      if(!ok) setOrb('idle');
+      // ok 이면 speak onend 가 camlisten 으로 전환
     });
     return;
   }
@@ -941,42 +992,191 @@ function handleUtterance(text){
     return;
   }
 
-  // (2) 일반 질문 → Gemini
-  //  · 카메라가 켜져 있으면 현재 프레임을 항상 첨부
-  //  · autoCam 옵션이 켜져 있으면, 카메라가 꺼져 있어도 자동으로 켜서 첨부
-  function proceed(){
-    var img = S.camOn ? captureFrame() : null;
-    setOrb('thinking'); S.thinking=true; refreshPills();
-    geminiCall(text,img).then(function(answer){
-      S.history.push({role:'user',text:text});
-      S.history.push({role:'model',text:answer});
-      if(S.history.length>12) S.history=S.history.slice(-12);
-      S.thinking=false; refreshPills();
-      addBubble('ai',answer,false);
-      // orb 는 idle 로 두지 않고 speak() 의 onstart 가 'speaking' 으로 전환.
-      // TTS 가 꺼져 있거나 미지원이면 곧장 idle.
-      speak(answer);
-      if(!S.tts || !('speechSynthesis' in window)) setOrb('idle');
-      logLine('setupLog','응답 완료'+(img?' (카메라 첨부)':''),'t');
-    }).catch(function(err){
-      S.thinking=false; refreshPills();
-      setOrb('idle');
-      var msg='오류: '+err.message;
-      addBubble('ai',msg,false);
-      if(S.tts) speak('요청 처리 중 문제가 생겼어요.');
-      logLine('setupLog',msg,'e');
-    });
+  // (2) 일반 질문 → Gemini (고개 트리거 모드 = 텍스트 질의)
+  setOrb('thinking'); S.thinking=true; refreshPills();
+  geminiCall(text,null).then(function(answer){
+    S.history.push({role:'user',text:text});
+    S.history.push({role:'model',text:answer});
+    if(S.history.length>12) S.history=S.history.slice(-12);
+    S.thinking=false; refreshPills();
+    addBubble('ai',answer,false);
+    // speak() 의 onstart 가 'speaking' 으로 전환. TTS 없으면 idle.
+    speak(answer);
+    if(!S.tts || !('speechSynthesis' in window)) setOrb('idle');
+    logLine('setupLog','응답 완료','t');
+  }).catch(function(err){
+    S.thinking=false; refreshPills();
+    setOrb('idle');
+    var msg='오류: '+err.message;
+    addBubble('ai',msg,false);
+    if(S.tts) speak('요청 처리 중 문제가 생겼어요.');
+    logLine('setupLog',msg,'e');
+  });
+}
+
+/* ---------------------------------------------------------------------------
+ * 7.5 카메라 모드 — 실시간 화면 대화 엔진
+ *
+ *  카메라가 켜지면 고개 트리거 없이, 음성 인식을 계속 켜둔다.
+ *  말이 끝나 일정 시간(silenceGap) 침묵하면 그 발화를 한 덩어리로 잘라
+ *  '그 순간의 카메라 프레임'과 함께 Gemini(VLM) 로 보낸다.
+ *  Gemini 응답을 말하는 동안에는 인식을 멈춰 자기 목소리를 받지 않게 하고,
+ *  응답이 끝나면 다시 인식을 재개한다 → 자연스러운 연속 대화.
+ * -------------------------------------------------------------------------*/
+var camConvo = {
+  active:false,
+  recog:null,
+  finalBuf:'',          // 확정 인식 누적
+  silenceGap:1200,      // 이 시간(ms) 침묵하면 발화 1건으로 확정
+  silenceTimer:null,
+  restartGuard:false
+};
+
+function camClearSilence(){
+  if(camConvo.silenceTimer){ clearTimeout(camConvo.silenceTimer); }
+  camConvo.silenceTimer=null;
+}
+/* 침묵 타이머 — 발화가 멎으면 확정 처리 */
+function camArmSilence(){
+  camClearSilence();
+  camConvo.silenceTimer=setTimeout(function(){
+    var said=camConvo.finalBuf.trim();
+    camConvo.finalBuf='';
+    if(said){ camSubmit(said); }
+  },camConvo.silenceGap);
+}
+
+/* 카메라 모드 인식기 생성 */
+function buildCamRecognizer(){
+  if(!SR) return null;
+  var r=new SR();
+  r.lang=$('lang').value;
+  r.continuous=true;
+  r.interimResults=true;
+  r.maxAlternatives=1;
+
+  r.onresult=function(ev){
+    var interim='';
+    camConvo.finalBuf='';
+    for(var i=0;i<ev.results.length;i++){
+      var res=ev.results[i];
+      if(res.isFinal) camConvo.finalBuf+=res[0].transcript;
+      else interim+=res[0].transcript;
+    }
+    var show=(camConvo.finalBuf+' '+interim).trim();
+    if(show){
+      addBubble('you',show,true);
+      camArmSilence();   // 말이 들어올 때마다 침묵 타이머 리셋
+    }
+  };
+  r.onerror=function(ev){
+    if(ev.error==='not-allowed'){
+      logLine('setupLog','카메라 모드: 마이크 권한 거부','e');
+      camConvo.active=false;
+    } else if(ev.error!=='no-speech' && ev.error!=='aborted'){
+      logLine('setupLog','카메라 모드 인식 오류: '+ev.error,'e');
+    }
+  };
+  r.onend=function(){
+    // 브라우저가 인식을 자발적으로 끝낸 경우(짧은 침묵 등) — 카메라 모드가
+    // 살아있고 Gemini 처리/발화 중이 아니면 새 인식기로 재개.
+    if(camConvo.active && !S.thinking && !S.speaking && !camConvo.restartGuard){
+      setTimeout(function(){
+        if(camConvo.active && !S.thinking && !S.speaking && !camConvo.restartGuard){
+          camStartRecog();
+        }
+      },150);
+    }
+  };
+  return r;
+}
+
+function camStartRecog(){
+  if(!camConvo.active || S.thinking || S.speaking) return;
+  // 매번 새 인식기 — 이미 끝난 인스턴스 재사용 시 일부 브라우저가 오류를 냄
+  camConvo.recog=buildCamRecognizer();
+  if(!camConvo.recog) return;
+  try{ camConvo.recog.start(); S.listening=true; refreshPills(); }
+  catch(e){
+    setTimeout(function(){
+      if(camConvo.active && !S.thinking && !S.speaking){
+        try{ camConvo.recog.start(); S.listening=true; refreshPills(); }catch(e2){}
+      }
+    },300);
+  }
+}
+function camStopRecog(){
+  camConvo.restartGuard=true;
+  camClearSilence();
+  if(camConvo.recog){
+    try{ camConvo.recog.stop(); }catch(e){}
+  }
+  S.listening=false; refreshPills();
+  setTimeout(function(){ camConvo.restartGuard=false; },300);
+}
+
+/* 카메라 모드 진입 — 카메라가 켜진 직후 호출 */
+function startCameraConversation(){
+  if(camConvo.active) return;
+  if(!SR){
+    addBubble('ai','이 브라우저는 음성 인식을 지원하지 않아요. (Chrome 권장)',false);
+    return;
+  }
+  camConvo.active=true;
+  camConvo.finalBuf='';
+  camConvo.recog=buildCamRecognizer();
+  camStartRecog();
+  setOrb('camlisten');
+  logLine('setupLog','카메라 대화 모드 — 고개 동작 없이 바로 말하세요','t');
+}
+/* 카메라 모드 종료 */
+function stopCameraConversation(){
+  if(!camConvo.active) return;
+  camConvo.active=false;
+  camStopRecog();
+  camConvo.recog=null;
+  camConvo.finalBuf='';
+}
+
+/* 카메라 모드에서 확정된 발화 1건을 VLM(Gemini)로 — 현재 프레임 첨부 */
+function camSubmit(text){
+  text=text.trim();
+  if(!text) return;
+
+  var intent=detectCameraIntent(text);
+  if(intent==='off'){
+    addBubble('you',text,false);
+    var m='카메라를 껐어요.';
+    addBubble('ai',m,false); speak(m);
+    stopCamera();
+    return;
   }
 
-  if(S.autoCam && !S.camOn){
-    setOrb('thinking'); S.thinking=true; refreshPills();
-    startCamera().then(function(){
-      // 첫 프레임이 들어올 시간을 약간 확보
-      setTimeout(function(){ S.thinking=false; proceed(); }, 400);
-    });
-  } else {
-    proceed();
-  }
+  addBubble('you',text,false);
+  camStopRecog();                  // 처리/발화 중 자기 목소리 유입 방지
+
+  var img=captureFrame();          // 지금 이 순간의 화면
+  S.thinking=true; setOrb('thinking'); refreshPills();
+
+  geminiCall(text,img).then(function(answer){
+    S.history.push({role:'user',text:text});
+    S.history.push({role:'model',text:answer});
+    if(S.history.length>12) S.history=S.history.slice(-12);
+    S.thinking=false; refreshPills();
+    addBubble('ai',answer,false);
+    speak(answer);                 // onend 에서 인식 재개
+    if(!S.tts || !('speechSynthesis' in window)){
+      setOrb('camlisten'); camStartRecog();
+    }
+    logLine('setupLog','카메라 모드 응답 완료 (프레임 첨부)','t');
+  }).catch(function(err){
+    S.thinking=false; refreshPills();
+    var msg='오류: '+err.message;
+    addBubble('ai',msg,false);
+    if(S.tts) speak('요청 처리 중 문제가 생겼어요.');
+    else { setOrb('camlisten'); camStartRecog(); }
+    logLine('setupLog',msg,'e');
+  });
 }
 
 /* ---------------------------------------------------------------------------
@@ -1199,6 +1399,8 @@ function evalStateMachine(){
  *  ※ Gemini 응답을 말하는 중(S.speaking)이거나 호출 중(S.thinking)에는
  *    트리거를 받지 않는다 → 재생 중 고개를 꺾어도 발화가 끊기지 않는다. */
 function onGyroMotion(tiltRate, spinRate){
+  // 카메라 대화 모드 중에는 고개 트리거를 쓰지 않는다(음성으로 계속 대화).
+  if(camConvo.active) return;
   if(TRIG.phase!=='idle' || S.thinking || S.speaking) return;
   // 숙임 또는 좌우, 둘 중 하나라도 충분히 빠른 '꺾는 동작'이면 ARMING 진입
   var moved = (Math.abs(tiltRate)>TRIG.gyroOn) ||
@@ -1385,6 +1587,7 @@ bindRange('rngPostureOff','lblPostureOff',function(v){
     $('lblPostureOff').textContent=TRIG.postureOff; }
 });
 bindRange('rngSilence','lblSilence',function(v){ TRIG.silenceMs=v*1000; });
+bindRange('rngCamGap','lblCamGap',function(v){ camConvo.silenceGap=v*1000; });
 
 // 스위치들
 function bindSwitch(id, key, after){
@@ -1394,13 +1597,11 @@ function bindSwitch(id, key, after){
     if(key==='tiltDirNeg') S.tiltDirNeg=on;
     if(key==='rollDirNeg') S.rollDirNeg=on;
     if(key==='tts') S.tts=on;
-    if(key==='autoCam') S.autoCam=on;
     if(after) after();
   });
 }
 bindSwitch('swTiltDir','tiltDirNeg',saveStore);
 bindSwitch('swRollDir','rollDirNeg',saveStore);
-bindSwitch('swAutoCam','autoCam',saveStore);
 
 // API 키 테스트
 $('testKey').addEventListener('click',function(){
@@ -1426,7 +1627,6 @@ $('testKey').addEventListener('click',function(){
   if(st.swipeAxis) $('swipeAxis').value=st.swipeAxis;
   if(st.tiltDirNeg){ S.tiltDirNeg=true; $('swTiltDir').classList.add('on'); }
   if(st.rollDirNeg){ S.rollDirNeg=true; $('swRollDir').classList.add('on'); }
-  if(st.autoCam){ S.autoCam=true; $('swAutoCam').classList.add('on'); }
 
   // 임계값 복원 + 슬라이더 반영
   function applyRange(stVal,trigKey,rngId,lblId,mul){
@@ -1440,6 +1640,12 @@ $('testKey').addEventListener('click',function(){
   applyRange(st.postureOn,'postureOn','rngPostureOn','lblPostureOn',null);
   applyRange(st.postureOff,'postureOff','rngPostureOff','lblPostureOff',null);
   applyRange(st.silenceMs,'silenceMs','rngSilence','lblSilence',1000);
+  // 카메라 모드 침묵 간격
+  if(st.camGap!=null){
+    camConvo.silenceGap=st.camGap;
+    $('rngCamGap').value=(st.camGap/1000);
+    $('lblCamGap').textContent=(st.camGap/1000);
+  }
 
   // 환경 점검
   if(!window.isSecureContext){
