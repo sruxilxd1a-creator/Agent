@@ -127,7 +127,42 @@
   .tiltmini .fill{position:absolute;top:0;bottom:0;left:50%;width:0;
             background:var(--accent);border-radius:4px;transition:width .08s,left .08s;}
   .tiltmini .val{font-size:10px;color:var(--faint);
-            font-variant-numeric:tabular-nums;width:42px;}
+            font-variant-numeric:tabular-nums;width:60px;}
+  .tiltmini .lbl{font-size:8.5px;color:var(--faint);letter-spacing:.5px;
+            width:30px;text-align:right;}
+
+  /* fullscreen camera preview overlay */
+  .camfull{position:fixed;inset:0;z-index:100;background:#000;display:none;}
+  .camfull.show{display:block;}
+  #camFullVideo{position:absolute;inset:0;width:100%;height:100%;
+       object-fit:cover;background:#000;
+       /* 휴대폰이 90° 가로(카메라 왼쪽) → 영상을 세워 보여줌 */
+       transform:rotate(90deg) scale(1.78);}
+  .camfull-top{position:absolute;top:0;left:0;right:0;z-index:2;
+       padding:calc(env(safe-area-inset-top) + 12px) 14px 28px;
+       background:linear-gradient(180deg,rgba(0,0,0,.7),transparent);
+       display:flex;align-items:center;gap:8px;}
+  .camfull-dot{width:9px;height:9px;border-radius:50%;background:var(--cam);
+       box-shadow:0 0 10px var(--cam);animation:livedot 1.4s ease-in-out infinite;}
+  @keyframes livedot{0%,100%{opacity:1;}50%{opacity:.3;}}
+  .camfull-top .t{font-size:12px;font-weight:800;color:#fff;letter-spacing:.3px;}
+  .camfull-state{margin-left:auto;font-size:10.5px;font-weight:700;
+       color:#fff;background:rgba(255,255,255,.14);padding:5px 11px;
+       border-radius:20px;}
+  .camfull-bottom{position:absolute;left:0;right:0;bottom:0;z-index:2;
+       padding:30px 16px calc(env(safe-area-inset-bottom) + 16px);
+       background:linear-gradient(0deg,rgba(0,0,0,.82),transparent);
+       display:flex;flex-direction:column;gap:8px;}
+  .camfull-cap{font-size:13px;line-height:1.6;color:#fff;min-height:1.6em;}
+  .camfull-cap .who{font-size:8.5px;letter-spacing:1px;font-weight:800;
+       display:block;margin-bottom:3px;opacity:.7;}
+  .camfull-cap.you .who{color:var(--accent);}
+  .camfull-cap.ai .who{color:var(--cam);}
+  .camfull-hint{font-size:10px;color:rgba(255,255,255,.55);}
+  .camfull-x{position:absolute;top:calc(env(safe-area-inset-top) + 8px);
+       right:10px;z-index:3;width:34px;height:34px;border-radius:50%;
+       background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.25);
+       color:#fff;font-size:16px;cursor:pointer;}
 
   /* transcript / answer */
   .bubble{margin-top:10px;border-radius:11px;padding:11px 12px;font-size:12.5px;
@@ -252,9 +287,14 @@
             휴대폰을 이마/얼굴 옆에 가로로 — 화면은 나를 향하고 카메라는 왼쪽.
           </div>
           <div class="tiltmini">
-            <span class="val" id="tiltValL">down</span>
-            <div class="track"><div class="fill" id="tiltFill"></div></div>
-            <span class="val" id="tiltVal">0°</span>
+            <span class="lbl">숙임</span>
+            <div class="track"><div class="fill" id="pitchFill"></div></div>
+            <span class="val" id="pitchVal">0°</span>
+          </div>
+          <div class="tiltmini">
+            <span class="lbl">좌우</span>
+            <div class="track"><div class="fill" id="rollFill"></div></div>
+            <span class="val" id="rollVal">0°</span>
           </div>
         </div>
 
@@ -277,12 +317,15 @@
     <div class="sec-t">축 보정 — 동작이 이상하면</div>
     <div class="card">
       <div class="hint" style="margin-bottom:10px;">
-        가로 회전 때문에 기기마다 축이 다릅니다. 아래 <b>α/β/γ</b> 값을 보며:
+        휴대폰이 가로라 기기마다 축이 다릅니다. 아래 <b>α/β/γ</b> 값을 보며:
         <ol>
-          <li>고개를 <b>위아래로</b> 끄덕 → 제일 크게 변하는 게 <code>tiltAxis</code></li>
-          <li>고개를 <b>좌우로</b> 휙 → 제일 크게 변하는 게 <code>swipeAxis</code></li>
-          <li>방향이 반대면 아래 부호 스위치를 뒤집으세요</li>
+          <li>고개를 <b>위아래로</b> 숙였다 들기 → 제일 크게 변하는 게 <code>tiltAxis</code></li>
+          <li>고개를 <b>좌우로</b> 기울이기 → 제일 크게 변하는 게 <code>swipeAxis</code></li>
+          <li>상단 게이지 <b>숙임</b>/<b>좌우</b> 막대가 의도와 반대로 차면
+              해당 방향 스위치를 뒤집으세요</li>
         </ol>
+        트리거는 <b>숙임</b> 또는 <b>좌우(왼쪽)</b> 둘 중 하나만 충분히 움직여도
+        발동하므로, "왼쪽 아래" 동작이 한쪽으로 치우쳐도 잘 잡힙니다.
       </div>
       <div class="diag">
         <div class="cell"><div class="k">rotationRate α</div><div class="v" id="dA">0</div></div>
@@ -291,7 +334,7 @@
       </div>
       <div class="row" style="margin-top:10px;">
         <div class="field">
-          <label>tiltAxis (상하)</label>
+          <label>tiltAxis (상하 숙임)</label>
           <select id="tiltAxis">
             <option value="beta">beta</option>
             <option value="alpha">alpha</option>
@@ -299,7 +342,7 @@
           </select>
         </div>
         <div class="field">
-          <label>swipeAxis (좌우)</label>
+          <label>swipeAxis (좌우 기울임)</label>
           <select id="swipeAxis">
             <option value="alpha">alpha</option>
             <option value="beta">beta</option>
@@ -309,16 +352,20 @@
       </div>
       <div style="margin-top:10px;">
         <div class="toggle-row">
-          <span>tilt 방향 뒤집기 <code>tiltDir</code></span>
+          <span>숙임 방향 뒤집기 <code>tiltDir</code></span>
           <div class="sw" id="swTiltDir"></div>
         </div>
         <div class="toggle-row">
-          <span>swipe 방향 뒤집기 <code>swipeDir</code></span>
+          <span>좌우 방향 뒤집기 <code>swipeDir</code></span>
           <div class="sw" id="swSwipeDir"></div>
+        </div>
+        <div class="toggle-row">
+          <span>왼쪽 기울임 트리거 방향 뒤집기</span>
+          <div class="sw" id="swRollDir"></div>
         </div>
       </div>
       <div class="field" style="margin-top:10px;">
-        <label>트리거 방향 — 고개를 어느 쪽으로 꺾을 때 듣기 시작?</label>
+        <label>숙임 트리거 방향 — 위/아래 중 어느 쪽으로 숙일 때?</label>
         <select id="trigDir">
           <option value="down">아래로 숙일 때 (기본)</option>
           <option value="up">위로 들 때</option>
@@ -348,6 +395,28 @@
     카메라 켜기: "<b>지금부터 같이 봐줘</b>" / 끄기: "<b>카메라 꺼</b>" 라고 말하세요
   </div>
 
+</div>
+
+<!-- ============ FULLSCREEN CAMERA PREVIEW ============ -->
+<div class="camfull" id="camFull">
+  <video id="camFullVideo" playsinline muted autoplay></video>
+  <button class="camfull-x" id="camFullX">✕</button>
+  <div class="camfull-top">
+    <span class="camfull-dot"></span>
+    <span class="t">카메라로 함께 보는 중</span>
+    <span class="camfull-state" id="camFullState">대기</span>
+  </div>
+  <div class="camfull-bottom">
+    <div class="camfull-cap you" id="camFullYou" style="display:none;">
+      <span class="who">나</span><span class="txt"></span>
+    </div>
+    <div class="camfull-cap ai" id="camFullAI" style="display:none;">
+      <span class="who">Gemini</span><span class="txt"></span>
+    </div>
+    <div class="camfull-hint" id="camFullHint">
+      고개를 왼쪽 아래로 숙이고 화면에 대해 물어보세요 · "카메라 꺼"로 종료
+    </div>
+  </div>
 </div>
 
 <!-- ======================================================================
@@ -496,6 +565,7 @@ function saveStore(){
       swipeAxis:$('swipeAxis').value,
       tiltDirNeg:S.tiltDirNeg,
       swipeDirNeg:S.swipeDirNeg,
+      rollDirNeg:S.rollDirNeg,
       trigDir:$('trigDir').value,
       tts:S.tts, autoCam:S.autoCam
     }));
@@ -515,6 +585,7 @@ var S = {
   autoCam:false,
   tiltDirNeg:false,
   swipeDirNeg:false,
+  rollDirNeg:false,     // 왼쪽 기울임 방향이 반대로 잡힐 때 뒤집기
   trigDir:'down',
   lastTiltDir:'center',
   history:[]            // [{role:'user'|'model', text}]
@@ -550,6 +621,11 @@ function setOrb(state){
     icon.textContent='✨'; label.textContent='Gemini 가 생각 중…';
     sub.textContent=S.camOn?'카메라 화면과 함께 분석 중':'답을 만들고 있어요';
   }
+  // 전체화면 카메라 오버레이 상태 미러
+  if(S.camOn && typeof setCamState==='function'){
+    setCamState({idle:'대기',armed:'듣는 중',
+                 listening:'인식 중',thinking:'분석 중…'}[state]||'대기');
+  }
 }
 function refreshPills(){
   $('pillSensor').className = 'pill'+(S.sensorOn?' on':'');
@@ -559,6 +635,10 @@ function refreshPills(){
   $('pillCam').className = 'pill cam'+(S.camOn?' on':'');
 }
 function addBubble(kind, text, live){
+  // 카메라 전체화면일 때는 오버레이 자막에도 미러
+  if(S.camOn && typeof camCaption==='function'){
+    camCaption(kind, text);
+  }
   var convo=$('convo');
   if(live){
     var ex=convo.querySelector('.bubble.live');
@@ -596,24 +676,58 @@ function speak(text){
 }
 
 /* ---------------------------------------------------------------------------
- * 4. 카메라
+ * 4. 카메라  —  외부(후면) 카메라 + 전체화면 프리뷰
  * -------------------------------------------------------------------------*/
+function showCamFull(on){
+  $('camFull').classList.toggle('show', !!on);
+}
+function setCamState(txt){
+  var el=$('camFullState'); if(el) el.textContent=txt;
+}
+/* 전체화면 자막 미러 — 데모 확인용 */
+function camCaption(kind, text){
+  var el=$(kind==='you'?'camFullYou':'camFullAI');
+  var other=$(kind==='you'?'camFullAI':'camFullYou');
+  if(!el) return;
+  if(text){
+    el.style.display='block';
+    el.querySelector('.txt').textContent=text;
+  } else {
+    el.style.display='none';
+  }
+  // 질문이 새로 들어오면 이전 답변 숨김
+  if(kind==='you' && text && other) other.style.display='none';
+}
+
 function startCamera(){
   if(S.camOn) return Promise.resolve(true);
-  // 화면이 사용자 쪽 → 전면 카메라(user) 사용
-  return navigator.mediaDevices.getUserMedia({
-      video:{ facingMode:'user', width:{ideal:1280}, height:{ideal:720} },
-      audio:false
-    }).then(function(stream){
+  // 휴대폰이 이마에 붙어 화면이 사용자 쪽 → 보이는 건 후면(외부) 카메라
+  // facingMode:'environment' 우선, 실패 시 제약 없이 재시도
+  function req(constraints){
+    return navigator.mediaDevices.getUserMedia(constraints);
+  }
+  return req({ video:{ facingMode:{ideal:'environment'},
+                       width:{ideal:1280}, height:{ideal:720} }, audio:false })
+    .catch(function(){
+      // 일부 기기는 ideal 거부 → 기본 카메라로 폴백
+      return req({ video:true, audio:false });
+    })
+    .then(function(stream){
       camStream=stream;
-      var v=$('cam'); v.srcObject=stream;
-      return v.play().catch(function(){});
+      // 전체화면 프리뷰 비디오 + 백그라운드 스테이지 비디오 둘 다 같은 스트림
+      var vf=$('camFullVideo'), vs=$('cam');
+      vf.srcObject=stream; vs.srcObject=stream;
+      var p1=vf.play().catch(function(){});
+      var p2=vs.play().catch(function(){});
+      return Promise.all([p1,p2]);
     }).then(function(){
       S.camOn=true;
       $('stage').classList.add('cam-on');
       $('camOffBtn').disabled=false;
+      showCamFull(true);
+      setCamState('대기');
       refreshPills();
-      logLine('setupLog','카메라 켜짐 — 이후 질문은 화면과 함께 분석됩니다','t');
+      logLine('setupLog','외부 카메라 켜짐 — 전체화면 프리뷰 표시','t');
       return true;
     }).catch(function(err){
       logLine('setupLog','카메라 실패: '+err.message,'e');
@@ -624,17 +738,21 @@ function stopCamera(){
   if(!S.camOn) return;
   if(camStream){ camStream.getTracks().forEach(function(t){t.stop();}); }
   camStream=null;
+  $('camFullVideo').srcObject=null;
   $('cam').srcObject=null;
   S.camOn=false;
   $('stage').classList.remove('cam-on');
   $('camOffBtn').disabled=true;
+  showCamFull(false);
+  camCaption('you',''); camCaption('ai','');
   refreshPills();
   logLine('setupLog','카메라 꺼짐','t');
 }
 /* 현재 카메라 프레임을 jpeg base64 로 캡쳐.
  * 휴대폰이 90° 가로(카메라 왼쪽)이므로 캔버스에서 회전 보정. */
 function captureFrame(){
-  var v=$('cam');
+  var v=$('camFullVideo');
+  if(!v || !v.videoWidth) v=$('cam');
   if(!v || !v.videoWidth) return null;
   var vw=v.videoWidth, vh=v.videoHeight;
   // 90° 회전 → 출력 캔버스의 가로/세로를 맞바꿈
@@ -865,60 +983,99 @@ function stopListening(){
 }
 
 /* ---------------------------------------------------------------------------
- * 9. HeadMotion 콜백 — 트리거 로직
- *    "고개를 (왼쪽) 아래로 꺾는다" = tilt 가 trigDir 방향으로 데드존을 넘음
- *    꺾은 동안 listening 유지, 정면 복귀하면 stop → 전송
+ * 9. HeadMotion 콜백 + 트리거 로직
+ *
+ *  "고개를 왼쪽 아래로 숙인다" 는  ① 아래로 숙임(pitch)  ② 왼쪽으로 기울임(roll)
+ *  두 회전이 섞인 동작이다. tilt 한 축만 보면 둔하므로 —
+ *    · pitch 각도는 HeadMotion 모듈의 onTilt 에서 받고,
+ *    · roll  각도는 swipeAxis 의 회전속도를 직접 적분해서 추정한다.
+ *  둘 중 하나라도 임계를 넘으면 트리거 → 자연스러운 "왼쪽 아래" 동작이 잘 잡힌다.
  * -------------------------------------------------------------------------*/
-function buildHeadMotion(){
+var TRIG = {
+  pitchOn:8,    // 숙임 트리거 각(°)
+  rollOn:9,     // 좌측 기울임 트리거 각(°)
+  offFactor:0.55, // 해제는 더 낮은 각에서 (히스테리시스 — 떨림 방지)
+  rollAngle:0,  // 자체 적분한 roll 각
+  lastT:0
+};
+function rollGauge(){
+  // 중심 기준으로 좌(−)/우(+) 채움
+  var rA=Math.max(-20,Math.min(20,TRIG.rollAngle));
+  var f=$('rollFill');
+  var w=Math.abs(rA)/20*50;          // 채울 폭(%)
+  if(rA<0){ f.style.left=(50-w)+'%'; }   // 왼쪽으로
+  else    { f.style.left='50%'; }        // 오른쪽으로
+  f.style.width=w+'%';
+  $('rollVal').textContent=Math.round(TRIG.rollAngle)+'°';
+}
+
+function evalTrigger(pitchAngle){
+  // trigDir 가 'down' 이면 pitch 음수가 숙임 / 'up' 이면 양수
   var trigDir=$('trigDir').value;
+  var pitchInto = (trigDir==='down') ? -pitchAngle : pitchAngle;
+  // roll: 왼쪽 기울임 = rollAngle 음수 방향 (rollDir 로 부호 보정)
+  var rollInto = -TRIG.rollAngle * (S.rollDirNeg?-1:1);
+
+  var on  = (pitchInto > TRIG.pitchOn) || (rollInto > TRIG.rollOn);
+  var off = (pitchInto < TRIG.pitchOn*TRIG.offFactor) &&
+            (rollInto  < TRIG.rollOn *TRIG.offFactor);
+
+  if(on && !S.armed && !S.thinking){
+    S.armed=true;
+    startListening();
+  } else if(off && S.armed){
+    S.armed=false;
+    if(S.listening) stopListening();
+    else setOrb(S.thinking?'thinking':'idle');
+  }
+  refreshPills();
+}
+
+function buildHeadMotion(){
+  TRIG.rollAngle=0; TRIG.lastT=0;
   return new HeadMotion({
     tiltAxis:$('tiltAxis').value,
     swipeAxis:$('swipeAxis').value,
     tiltDir:S.tiltDirNeg?-1:+1,
     swipeDir:S.swipeDirNeg?-1:+1,
-    // 트리거를 또렷하게: 데드존/풀 각도 살짝 키움
-    tiltDeadzone:6, tiltFull:14,
+    tiltDeadzone:5, tiltFull:14,
 
     onTilt:function(d){
-      // 미니 게이지
+      // ── pitch 게이지 ──
       var clamp=Math.max(-20,Math.min(20,d.angle));
-      var fill=$('tiltFill');
+      var fill=$('pitchFill');
       if(clamp>=0){ fill.style.left='50%'; fill.style.width=(clamp/20*50)+'%'; }
       else        { fill.style.left=(50+clamp/20*50)+'%';
                     fill.style.width=(-clamp/20*50)+'%'; }
-      $('tiltVal').textContent=Math.round(d.angle)+'°';
-      $('tiltValL').textContent=d.direction;
+      $('pitchVal').textContent=Math.round(d.angle)+'°';
 
-      // 트리거 판정: 현재 꺾인 방향이 trigDir 와 일치 + 데드존 밖
-      var triggered = (!d.inDeadzone && d.direction===trigDir);
-
-      if(triggered && !S.armed && !S.thinking){
-        // 막 꺾었다 → 듣기 시작
-        S.armed=true;
-        startListening();
-      } else if(!triggered && S.armed){
-        // 정면으로 복귀 → 듣기 종료 & 전송
-        S.armed=false;
-        if(S.listening) stopListening();
-        else setOrb(S.thinking?'thinking':'idle');
+      // ── roll 적분 (swipeAxis 회전속도) ──
+      var diag=hm?hm.getDiagnostics():null;
+      if(diag){
+        var rr=diag.rotationRate;
+        var rollRate=(rr[$('swipeAxis').value]||0)*(S.swipeDirNeg?-1:1);
+        var now=Date.now();
+        var dt=(TRIG.lastT>0)?(now-TRIG.lastT)/1000:0.08;
+        TRIG.lastT=now;
+        if(dt>0.3) dt=0.3;
+        if(Math.abs(rollRate)>1.5) TRIG.rollAngle += rollRate*dt;
+        TRIG.rollAngle *= (1-0.05);                 // 약한 중심복귀
+        TRIG.rollAngle = Math.max(-45,Math.min(45,TRIG.rollAngle));
       }
-      refreshPills();
+      rollGauge();
+
+      // ── 트리거 판정 (pitch OR roll) ──
+      evalTrigger(d.angle);
     },
 
     onSwipe:function(d){
-      // 좌우 휙 — 보조 동작: 오른쪽=대화 초기화, 왼쪽=카메라 토글
-      if(d.direction==='right'){
-        S.history=[];
-        $('convo').innerHTML='';
-        addBubble('ai','대화를 초기화했어요.',false);
-      } else {
-        if(S.camOn) stopCamera(); else startCamera();
-      }
+      // 좌우로 빠르게 휙 — 보조 제스처는 비활성(왼쪽 기울임 트리거와 혼동 방지)
+      // 필요하면 여기에 추가 동작을 둘 수 있음
     },
 
     onStatus:function(s){
       var map={
-        ready:'센서 동작 중 — 고개를 꺾어 말하세요',
+        ready:'센서 동작 중 — 고개를 왼쪽 아래로 숙여 말하세요',
         stopped:'센서 정지됨',
         denied:'⚠ 센서 권한 거부됨',
         unsupported:'⚠ DeviceMotion 미지원 브라우저',
@@ -988,9 +1145,12 @@ $('startBtn').addEventListener('click',function(){
   }
 });
 $('recenterBtn').addEventListener('click',function(){
-  if(hm){ hm.recenter(); logLine('setupLog','고개 중심 재설정 완료','t'); }
+  if(hm){ hm.recenter(); }
+  TRIG.rollAngle=0; TRIG.lastT=0;
+  logLine('setupLog','고개 중심 재설정 완료 (숙임·좌우 모두 0°)','t');
 });
 $('camOffBtn').addEventListener('click',stopCamera);
+$('camFullX').addEventListener('click',stopCamera);
 
 // 축/방향 변경 → 인스턴스 재구성 (센서 켜져 있으면 재시작)
 function rebuildIfRunning(){
@@ -1015,6 +1175,7 @@ function bindSwitch(id, key, after){
     var on=this.classList.contains('on');
     if(key==='tiltDirNeg') S.tiltDirNeg=on;
     if(key==='swipeDirNeg') S.swipeDirNeg=on;
+    if(key==='rollDirNeg') S.rollDirNeg=on;
     if(key==='tts') S.tts=on;
     if(key==='autoCam') S.autoCam=on;
     if(after) after();
@@ -1022,6 +1183,7 @@ function bindSwitch(id, key, after){
 }
 bindSwitch('swTiltDir','tiltDirNeg',rebuildIfRunning);
 bindSwitch('swSwipeDir','swipeDirNeg',rebuildIfRunning);
+bindSwitch('swRollDir','rollDirNeg',saveStore);
 bindSwitch('swAutoCam','autoCam',saveStore);
 
 // API 키 테스트
@@ -1050,6 +1212,7 @@ $('testKey').addEventListener('click',function(){
   S.trigDir=$('trigDir').value;
   if(st.tiltDirNeg){ S.tiltDirNeg=true; $('swTiltDir').classList.add('on'); }
   if(st.swipeDirNeg){ S.swipeDirNeg=true; $('swSwipeDir').classList.add('on'); }
+  if(st.rollDirNeg){ S.rollDirNeg=true; $('swRollDir').classList.add('on'); }
   if(st.autoCam){ S.autoCam=true; $('swAutoCam').classList.add('on'); }
 
   // 환경 점검
